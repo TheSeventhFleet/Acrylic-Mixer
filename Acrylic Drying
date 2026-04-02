@@ -1,29 +1,187 @@
-function suggestPigments(r,g,b){
-  const distances = pigments.map(p=>{
-    const c = hexToRgb(p.hex);
-    return {pigment:p, dist:Math.sqrt((c.r-r)**2 + (c.g-g)**2 + (c.b-b)**2)};
-  });
-  distances.sort((a,b)=>a.dist-b.dist);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vallejo Mixer</title>
+<style>
+body { font-family: Arial; background:#f4f4f4; padding:20px; }
+.container { display:flex; gap:20px; }
+.controls { width:320px; }
+.color-row { display:flex; gap:5px; margin-bottom:5px; align-items:center; }
+.preview { width:120px; height:120px; border:1px solid #000; margin-top:5px; }
+#imagePreview { max-width:500px; cursor:crosshair; display:block; margin-bottom:5px; }
+.picked-color { width:50px; height:50px; border:1px solid #000; margin-top:5px; }
+.preview-label { text-align:center; font-weight:bold; margin-top:5px; }
+</style>
+</head>
+<body>
 
-  const top5 = distances.slice(0,5);
+<h2>Vallejo Mixer</h2>
+<div class="container">
+  <div class="controls">
+    <button id="addColorBtn">+ Add Color</button>
+    <button id="targetToggle">Match Wet</button>
+    <div id="rows"></div>
+    <div>
+      <div class="preview-label">Wet</div>
+      <div id="previewWet" class="preview"></div>
+      <div class="preview-label">Dry</div>
+      <div id="previewDry" class="preview"></div>
+    </div>
+  </div>
+  <div>
+    <img id="imagePreview">
+    <div id="pickedColor" class="picked-color"></div>
+    <input type="file" id="imageInput">
+    <div id="suggestions"></div>
+  </div>
+</div>
 
-  // Ensure enough rows
-  while(colorRows.length < top5.length){
-    addColorRow();
-  }
+<canvas id="canvas" style="display:none;"></canvas>
 
-  // Assign top pigments to sliders with small default
-  top5.forEach((d,i)=>{
-    const row = colorRows[i];
-    row.select.value = d.pigment.hex;
-    row.slider.style.display = 'block';
-    row.slider.value = 30; // small default to approximate color
-  });
+<script>
+// ---------- PIGMENTS ----------
+const pigments = [
+{name:'Air White',hex:'#f7f7f7'},
+{name:'Chaos Black',hex:'#111111'},
+{name:'Basic Skin Tone',hex:'#f2c6a0'},
+{name:'Flat Flesh',hex:'#f2b283'},
+{name:'Elf Skin',hex:'#f5d4b2'},
+{name:'Medium Flesh',hex:'#d9a074'},
+{name:'Dark Flesh',hex:'#8a5a3b'},
+{name:'Salmon Rose',hex:'#f7a6a1'},
+{name:'Rosy Flesh',hex:'#e8a39c'},
+{name:'Pale Pink',hex:'#f6c1c0'},
+{name:'Flat Yellow',hex:'#f9ea36'},
+{name:'Ice Yellow',hex:'#fff1a8'},
+{name:'Orange',hex:'#ff7f2a'},
+{name:'Flat Red',hex:'#a12424'},
+{name:'Hull Red',hex:'#5a1a1a'},
+{name:'Dark Blue',hex:'#1f3a93'},
+{name:'Flat Blue',hex:'#3f70b0'},
+{name:'Pastel Blue',hex:'#7fa9e1'},
+{name:'Neutral Grey',hex:'#7f7f7f'},
+{name:'Flat Brown',hex:'#7a5230'},
+{name:'Flat Green',hex:'#1b6e20'}
+];
 
-  updateMix();
+// ---------- DOM ----------
+const rowsDiv = document.getElementById('rows');
+const previewWet = document.getElementById('previewWet');
+const previewDry = document.getElementById('previewDry');
+const imageInput = document.getElementById('imageInput');
+const imagePreview = document.getElementById('imagePreview');
+const pickedColorDiv = document.getElementById('pickedColor');
+const suggestionsDiv = document.getElementById('suggestions');
+const addColorBtn = document.getElementById('addColorBtn');
+const targetToggle = document.getElementById('targetToggle');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
 
-  // Show suggestions visually
-  suggestionsDiv.innerHTML = '<strong>Suggested pigments:</strong><br>'+top5
-    .map(d=>`<span class="swatch" style="background:${d.pigment.hex}"></span>${d.pigment.name} (${d.pigment.line})`)
-    .join('<br>');
+let colorRows = [];
+let matchWet = true;
+
+// ---------- HELPERS ----------
+function hexToRgb(hex){let n=parseInt(hex.slice(1),16);return {r:(n>>16)&255,g:(n>>8)&255,b:n&255};}
+function rgbToLab(r,g,b){r/=255;g/=255;b/=255;r=r>0.04045?((r+0.055)/1.055)**2.4:r/12.92;g=g>0.04045?((g+0.055)/1.055)**2.4:g/12.92;b=b>0.04045?((b+0.055)/1.055)**2.4:b/12.92;let x=r*0.4124+g*0.3576+b*0.1805;let y=r*0.2126+g*0.7152+b*0.0722;let z=r*0.0193+g*0.1192+b*0.9505;x/=0.95047;z/=1.08883;x=x>0.008856?x**(1/3):(7.787*x)+16/116;y=y>0.008856?y**(1/3):(7.787*y)+16/116;z=z>0.008856?z**(1/3):(7.787*z)+16/116;return {L:(116*y)-16,a:500*(x-y),b:200*(y-z)};}
+function deltaE(a,b){return Math.sqrt((a.L-b.L)**2+(a.a-b.a)**2+(a.b-b.b)**2);}
+
+// ---------- ADD ROW ----------
+function addColorRow(hex='#f7f7f7',val=0){
+  const row=document.createElement('div'); row.className='color-row';
+  const select=document.createElement('select');
+  pigments.forEach(p=>{let o=document.createElement('option');o.value=p.hex;o.text=p.name;select.appendChild(o);});
+  select.value=hex;
+  const slider=document.createElement('input'); slider.type='range'; slider.min=0; slider.max=100; slider.value=val;
+  slider.oninput=updateMix; select.onchange=updateMix;
+  row.appendChild(select); row.appendChild(slider);
+  rowsDiv.appendChild(row);
+  colorRows.push({row,select,slider});
 }
+
+// ---------- MIX ----------
+function updateMix(){
+  let r=0,g=0,b=0,total=0;
+  colorRows.forEach(c=>{let w=parseInt(c.slider.value);if(w>0){let rgb=hexToRgb(c.select.value);r+=rgb.r*w;g+=rgb.g*w;b+=rgb.b*w;total+=w;}});
+  if(total>0){r/=total;g/=total;b/=total;}
+  if(matchWet){
+    previewWet.style.backgroundColor=`rgb(${r},${g},${b})`;
+    previewDry.style.backgroundColor=`rgb(${Math.round(r*0.91)},${Math.round(g*0.91)},${Math.round(b*0.91)})`;
+  }else{
+    previewDry.style.backgroundColor=`rgb(${r},${g},${b})`;
+    previewWet.style.backgroundColor=`rgb(${Math.round(r/0.91)},${Math.round(g/0.91)},${Math.round(b/0.91)})`;
+  }
+}
+
+// ---------- IMAGE PICKER ----------
+imageInput.onchange=e=>{
+  let file=e.target.files[0]; let img=new Image();
+  img.onload=()=>{
+    imagePreview.src=img.src;
+    setTimeout(()=>{
+      canvas.width=imagePreview.clientWidth; canvas.height=imagePreview.clientHeight;
+      ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    },50);
+  };
+  img.src=URL.createObjectURL(file);
+};
+imagePreview.onclick=e=>{
+  let rect=imagePreview.getBoundingClientRect();
+  let x=Math.floor(e.clientX-rect.left), y=Math.floor(e.clientY-rect.top);
+  let d=ctx.getImageData(x,y,1,1).data;
+  pickedColorDiv.style.backgroundColor=`rgb(${d[0]},${d[1]},${d[2]})`;
+  let targetR=d[0],targetG=d[1],targetB=d[2];
+  if(!matchWet){targetR=Math.round(d[0]/0.91);targetG=Math.round(d[1]/0.91);targetB=Math.round(d[2]/0.91);}
+  smartMixToMatch(targetR,targetG,targetB);
+};
+
+// ---------- WET/DRY TOGGLE ----------
+targetToggle.onclick=()=>{
+  matchWet=!matchWet; targetToggle.textContent=matchWet?'Match Wet':'Match Dry';
+  const bg=pickedColorDiv.style.backgroundColor;
+  if(bg){
+    const rgb=bg.match(/\d+/g).map(Number);
+    let r=rgb[0],g=rgb[1],b=rgb[2];
+    if(!matchWet){r=Math.round(r/0.91);g=Math.round(g/0.91);b=Math.round(b/0.91);}
+    smartMixToMatch(r,g,b);
+  }
+};
+
+// ---------- SMART MIX WITH SKIN PINK BOOST ----------
+function smartMixToMatch(r,g,b){
+  rowsDiv.innerHTML=''; colorRows=[];
+  for(let i=0;i<4;i++) addColorRow();
+  const labTarget=rgbToLab(r,g,b);
+  const brightness=(r+g+b)/3;
+  function strength(hex){if(hex=='#111111')return 0.3;if(hex=='#f7f7f7')return 0.6;if(['#f7a6a1','#e8a39c','#f6c1c0'].includes(hex))return 1.4;if(['#a12424','#5a1a1a'].includes(hex))return 1.2;if(['#f9ea36','#fff1a8'].includes(hex))return 1.3;return 1;}
+  let hasRedBias=(r>g&&r>b)||(r>140&&g>100&&b<120)||(r>180&&g<160);
+  let base;if(brightness>220)base='#f7f7f7';else if(brightness<40)base='#111111';else{base=pigments.map(p=>{let lab=rgbToLab(...Object.values(hexToRgb(p.hex)));return {hex:p.hex,dist:deltaE(lab,labTarget)}}).sort((a,b)=>a.dist-b.dist)[0].hex;}
+  colorRows[0].select.value=base;
+  let others=pigments.filter(p=>p.hex!==base).map(p=>{let lab=rgbToLab(...Object.values(hexToRgb(p.hex)));return {hex:p.hex,dist:deltaE(lab,labTarget)}}).sort((a,b)=>a.dist-b.dist);
+  for(let i=1;i<4;i++) colorRows[i].select.value=others[i-1].hex;
+  let skinTone=(r>180 && g>120 && g<180 && b>100 && b<160)||(r>200&&g>140&&b>120);
+  if(skinTone){let pinks=['#f7a6a1','#e8a39c','#f6c1c0']; for(let i=1;i<4;i++){if(pinks.includes(colorRows[i].select.value))colorRows[i].slider.value=Math.max(parseInt(colorRows[i].slider.value),15);}}
+  let mix=[75,10,10,5];
+  function apply(){mix.forEach((v,i)=>colorRows[i].slider.value=v);updateMix();}
+  function error(){let rgb=getComputedStyle(matchWet?previewWet:previewDry).backgroundColor.match(/\d+/g).map(Number);if(!matchWet){rgb=rgb.map(c=>Math.round(c*0.91));}return deltaE(rgbToLab(...rgb),labTarget);}
+  apply(); let best=[...mix]; let bestErr=error();
+  for(let i=0;i<400;i++){
+    let m=[...mix]; let idx;if(hasRedBias && Math.random()<0.4)idx=1;else idx=Math.floor(Math.random()*3)+1;
+    m[idx]+=(Math.random()*6-3)*strength(colorRows[idx].select.value);
+    let sum=m.slice(1).reduce((a,b)=>a+b,0); m[0]=100-sum; if(m[0]<55)continue;
+    mix=m; apply();
+    let e=error(); if(e<bestErr){bestErr=e;best=[...mix];}else mix=[...best];
+  }
+  mix=best; apply();
+  suggestionsDiv.innerHTML='<b>Mix:</b><br>'+mix.map((v,i)=>`${colorRows[i].select.options[colorRows[i].select.selectedIndex].text} ~ ${Math.round(v)}%`).join('<br>');
+}
+
+// ---------- INIT ----------
+addColorBtn.onclick=()=>addColorRow();
+addColorRow();
+updateMix();
+</script>
+
+</body>
+</html>

@@ -136,30 +136,44 @@ imageInput.addEventListener('change', e=>{
     fullImage = img;
     imagePreview.src = img.src;
 
-    // Draw full image to canvas at natural size (avoiding interpolation issues)
+    // Draw full image to canvas at natural size
     imageCanvas.width = img.naturalWidth;
     imageCanvas.height = img.naturalHeight;
-    ctx.imageSmoothingEnabled = false; // critical for exact colors
+    ctx.imageSmoothingEnabled = false;
     ctx.drawImage(img,0,0);
     suggestionsDiv.innerHTML='';
   };
   img.src = URL.createObjectURL(file);
 });
 
-// Pick color from image
-imagePreview.addEventListener('click', e=>{
+// Pick color from image using 3x3 pixel averaging
+function pickColorFromCanvas(e){
   if(!fullImage) return;
 
   const rect = imagePreview.getBoundingClientRect();
   const scaleX = fullImage.naturalWidth / rect.width;
   const scaleY = fullImage.naturalHeight / rect.height;
 
-  const x = Math.floor((e.clientX - rect.left) * scaleX);
-  const y = Math.floor((e.clientY - rect.top) * scaleY);
+  const xCenter = Math.floor((e.clientX - rect.left) * scaleX);
+  const yCenter = Math.floor((e.clientY - rect.top) * scaleY);
 
-  const pixel = ctx.getImageData(x,y,1,1).data;
-  suggestMix(pixel[0],pixel[1],pixel[2]);
-});
+  let r=0, g=0, b=0, count=0;
+  for(let dx=-1; dx<=1; dx++){
+    for(let dy=-1; dy<=1; dy++){
+      const x = Math.min(Math.max(xCenter+dx,0), fullImage.naturalWidth-1);
+      const y = Math.min(Math.max(yCenter+dy,0), fullImage.naturalHeight-1);
+      const pixel = ctx.getImageData(x,y,1,1).data;
+      r += pixel[0]; g += pixel[1]; b += pixel[2]; count++;
+    }
+  }
+
+  r = Math.round(r/count);
+  g = Math.round(g/count);
+  b = Math.round(b/count);
+
+  suggestMix(r,g,b);
+}
+imagePreview.addEventListener('click', pickColorFromCanvas);
 
 // Suggest nearest pigments
 function suggestMix(r,g,b){

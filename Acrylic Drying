@@ -1,77 +1,211 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Accurate Color Picker Test</title>
-  <style>
-    #imageDisplay { max-width: 400px; cursor: crosshair; border: 1px solid #ccc; }
-    #colorResult { margin-top: 10px; font-family: sans-serif; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vallejo Acrylic Mixer - Integrated Picker</title>
+<style>
+body { font-family: Arial, sans-serif; background:#f4f4f4; padding:20px; }
+.container { display:flex; flex-wrap:wrap; gap:20px; }
+.controls { flex:1 1 400px; background:#fff; padding:15px; border-radius:8px; box-shadow:0 0 5px rgba(0,0,0,0.2);}
+.control-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.control-row select, .control-row input[type=range] { flex:1; }
+.add-btn { margin-top:10px; }
+.previews { display:flex; flex-direction:column; gap:10px; margin-top:20px; }
+.preview { width:150px; height:150px; border-radius:8px; border:1px solid #ccc; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#fff; font-size:16px; }
+#imagePicker { flex:1 1 250px; }
+#imagePreview { max-width:100%; border:1px solid #ccc; cursor:crosshair; display:block; margin-bottom:10px; }
+.suggestions { margin-top:10px; padding:5px; background:#fff; border:1px solid #ccc; border-radius:5px; }
+</style>
 </head>
 <body>
+<h1>Vallejo Acrylic Mixer</h1>
+<div class="container">
+  <div class="controls" id="controlsPanel">
+    <div id="colorControls"></div>
+    <button class="add-btn" id="addColorBtn">Add Another Color</button>
+    <div class="previews">
+      <div class="preview" id="previewWet">Wet</div>
+      <div class="preview" id="previewDry">Dry</div>
+    </div>
+  </div>
+  <div id="imagePicker">
+    <input type="file" id="imageInput" accept="image/*">
+    <img id="imagePreview" alt="Upload image to pick color">
+    <div class="suggestions" id="suggestions"></div>
+  </div>
+</div>
 
-<input type="file" id="imageInput" accept="image/*">
-<img id="imageDisplay" alt="Upload an image then click to pick a color">
-<div id="colorResult">Picked color will appear here</div>
-
-<canvas id="hiddenCanvas" style="display:none;"></canvas>
+<canvas id="imageCanvas" style="display:none;"></canvas>
 
 <script>
+// Pigments
+const pigments = [
+  {code:'70.901', name:'Pastel Blue', line:'Model Color', hex:'#7fa9e1'},
+  {code:'70.930', name:'Dark Blue', line:'Model Color', hex:'#1f3a93'},
+  {code:'71001', name:'Air White', line:'Model Air', hex:'#f7f7f7'},
+  {code:'71015', name:'Air Red', line:'Model Air', hex:'#c92f2d'},
+  {code:'777', name:'Ork Skin', line:'Game Color', hex:'#8c7c55'},
+  {code:'700', name:'Chaos Black', line:'Game Color', hex:'#000000'},
+  {code:'70990', name:'Flat Yellow', line:'Model Color', hex:'#f9ea36'},
+  {code:'70822', name:'Flat Green', line:'Model Color', hex:'#1b6e20'},
+  {code:'70925', name:'Orange', line:'Model Color', hex:'#ff7f2a'},
+  {code:'70927', name:'Flat Brown', line:'Model Color', hex:'#7a5230'}
+];
+
+const colorControls = document.getElementById('colorControls');
+const addColorBtn = document.getElementById('addColorBtn');
+const previewWet = document.getElementById('previewWet');
+const previewDry = document.getElementById('previewDry');
 const imageInput = document.getElementById('imageInput');
-const imageDisplay = document.getElementById('imageDisplay');
-const hiddenCanvas = document.getElementById('hiddenCanvas');
-const ctx = hiddenCanvas.getContext('2d');
-const colorResult = document.getElementById('colorResult');
+const imagePreview = document.getElementById('imagePreview');
+const suggestionsDiv = document.getElementById('suggestions');
+const imageCanvas = document.getElementById('imageCanvas');
+const ctx = imageCanvas.getContext('2d');
 
-let naturalImage = null;
+let colorRows = [];
+let fullImage = null;
 
-// Load image into hidden canvas
-imageInput.addEventListener('change', e => {
+// HEX to RGB
+function hexToRgb(hex){
+  const bigint = parseInt(hex.replace('#',''),16);
+  return {r:(bigint>>16)&255, g:(bigint>>8)&255, b:bigint&255};
+}
+
+// Add a single color row
+function addColorRow(selectedColor=null){
+  const row = document.createElement('div');
+  row.className='control-row';
+
+  const select = document.createElement('select');
+  select.innerHTML = '<option value="">Select Color</option>'+pigments.map(p=>`<option value="${p.hex}">${p.name}</option>`).join('');
+  if(selectedColor) select.value = selectedColor;
+  row.appendChild(select);
+
+  const slider = document.createElement('input');
+  slider.type='range'; slider.min=0; slider.max=100; slider.value=50; slider.style.display='none';
+  row.appendChild(slider);
+
+  select.addEventListener('change', ()=>{
+    slider.style.display = select.value ? 'block' : 'none';
+    updateMix();
+  });
+
+  slider.addEventListener('input', updateMix);
+
+  colorControls.appendChild(row);
+  colorRows.push({select, slider});
+  updateMix();
+}
+
+// Update Wet/Dry previews
+function updateMix(){
+  let r=0,g=0,b=0,total=0;
+  colorRows.forEach(c=>{
+    const weight = parseInt(c.slider.value)||0;
+    if(c.select.value && weight>0){
+      const rgb = hexToRgb(c.select.value);
+      r += rgb.r*weight; g += rgb.g*weight; b += rgb.b*weight;
+      total += weight;
+    }
+  });
+  let rWet=r,gWet=g,bWet=b;
+  if(total>0){ rWet=Math.round(r/total); gWet=Math.round(g/total); bWet=Math.round(b/total); }
+  let rDry=Math.round(rWet*0.85), gDry=Math.round(gWet*0.85), bDry=Math.round(bWet*0.85);
+
+  previewWet.style.backgroundColor=`rgb(${rWet},${gWet},${bWet})`;
+  previewDry.style.backgroundColor=`rgb(${rDry},${gDry},${bDry})`;
+
+  previewWet.style.color = (rWet+gWet+bWet<200)?'#fff':'#000';
+  previewDry.style.color = (rDry+gDry+bDry<200)?'#fff':'#000';
+}
+
+// Start with one row
+addColorRow();
+
+// Add new row when clicking button
+addColorBtn.addEventListener('click', ()=>addColorRow());
+
+// Image upload
+imageInput.addEventListener('change', e=>{
   const file = e.target.files[0];
-  if (!file) return;
-
+  if(!file) return;
   const img = new Image();
-  img.onload = () => {
-    naturalImage = img;
+  img.onload = ()=>{
+    fullImage = img;
+    imagePreview.src = img.src;
 
-    // Draw image at natural resolution
-    hiddenCanvas.width = img.naturalWidth;
-    hiddenCanvas.height = img.naturalHeight;
+    // Draw full image to canvas at natural size
+    imageCanvas.width = img.naturalWidth;
+    imageCanvas.height = img.naturalHeight;
     ctx.imageSmoothingEnabled = false; 
-    ctx.drawImage(img, 0, 0);
-
-    // Display it scaled nicely
-    imageDisplay.src = img.src;
-    colorResult.textContent = "Click the image to pick a color";
+    ctx.drawImage(img,0,0);
+    suggestionsDiv.innerHTML='';
   };
   img.src = URL.createObjectURL(file);
 });
 
-// Pick color on click
-imageDisplay.addEventListener('click', e => {
-  if (!naturalImage) return;
+// Photoshop-style color picker
+imagePreview.addEventListener('click', e=>{
+  if(!fullImage) return;
 
-  const rect = imageDisplay.getBoundingClientRect();
-  const scaleX = naturalImage.naturalWidth / rect.width;
-  const scaleY = naturalImage.naturalHeight / rect.height;
+  const rect = imagePreview.getBoundingClientRect();
+  const scaleX = fullImage.naturalWidth / rect.width;
+  const scaleY = fullImage.naturalHeight / rect.height;
 
-  const x = Math.floor((e.clientX - rect.left) * scaleX);
-  const y = Math.floor((e.clientY - rect.top) * scaleY);
+  const xCenter = Math.floor((e.clientX - rect.left) * scaleX);
+  const yCenter = Math.floor((e.clientY - rect.top) * scaleY);
 
-  const pixel = ctx.getImageData(x, y, 1, 1).data;
-  const [r, g, b] = pixel;
+  // 3x3 averaging for smooth picks
+  let r=0, g=0, b=0, count=0;
+  for(let dx=-1; dx<=1; dx++){
+    for(let dy=-1; dy<=1; dy++){
+      const x = Math.min(Math.max(xCenter+dx,0), fullImage.naturalWidth-1);
+      const y = Math.min(Math.max(yCenter+dy,0), fullImage.naturalHeight-1);
+      const pixel = ctx.getImageData(x,y,1,1).data;
+      r += pixel[0]; g += pixel[1]; b += pixel[2]; count++;
+    }
+  }
 
-  const hex = "#" + ((1 << 24) + (r << 16) + (g << 8) + b)
-                   .toString(16).slice(1).toUpperCase();
+  r = Math.round(r/count);
+  g = Math.round(g/count);
+  b = Math.round(b/count);
 
-  colorResult.innerHTML = `
-    <div style="display:flex;align-items:center;gap:10px;">
-      <div style="width:30px;height:30px;background:rgb(${r},${g},${b});border:1px solid #000;"></div>
-      <span>RGB: (${r}, ${g}, ${b}) — HEX: ${hex}</span>
-    </div>
-  `;
+  // Auto-fill as many new rows as needed for closest match
+  suggestMix(r,g,b);
 });
-</script>
 
+// Suggest nearest pigments and auto-fill new rows
+function suggestMix(r,g,b){
+  const distances = pigments.map(p=>{
+    const c = hexToRgb(p.hex);
+    return {pigment:p, dist:Math.sqrt((c.r-r)**2 + (c.g-g)**2 + (c.b-b)**2)};
+  });
+  distances.sort((a,b)=>a.dist-b.dist);
+  
+  // Clear current selections
+  colorRows.forEach(c=>{
+    c.select.value=''; 
+    c.slider.value=50; 
+    c.slider.style.display='none';
+  });
+
+  // Ensure enough rows
+  while(colorRows.length<distances.length){
+    addColorRow();
+  }
+
+  // Fill rows with top pigments
+  distances.forEach((d,i)=>{
+    colorRows[i].select.value = d.pigment.hex;
+    colorRows[i].slider.style.display='block';
+    colorRows[i].slider.value = Math.round(100/distances.length);
+  });
+
+  updateMix();
+  suggestionsDiv.innerHTML = '<strong>Suggested mix:</strong><br>'+distances.slice(0,3)
+      .map(d=>`${d.pigment.name} (${d.pigment.line}) ~ ${Math.round(100/distances.length)}%`).join('<br>');
+}
+</script>
 </body>
 </html>

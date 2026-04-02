@@ -2,47 +2,21 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Acrylic Paint Mixer Pro+</title>
-
+<title>Acrylic Paint Mixer Pro++</title>
 <style>
 body { font-family: Arial; text-align: center; background:#f4f4f4; }
-
-.preview {
-  width:150px; height:150px;
-  border:2px solid black;
-  display:inline-block; margin:10px;
-}
-
-.savedMix {
-  cursor:pointer;
-  padding:5px;
-  border:1px solid black;
-  margin:3px;
-  background:white;
-}
-
+.preview { width:150px; height:150px; border:2px solid black; display:inline-block; margin:10px; }
+.savedMix { cursor:pointer; padding:5px; border:1px solid black; margin:3px; background:white; }
 .controls { margin:10px; }
-
-select option {
-  padding:2px;
-}
-
-/* Swatch in dropdowns */
-.option-swatch {
-  display:inline-block;
-  width:12px; height:12px;
-  margin-right:4px;
-  vertical-align:middle;
-  border:1px solid #000;
-}
+.slider-container { margin:8px; }
+.percent-display { font-weight:bold; margin-left:5px; }
+button { margin:5px; }
 </style>
 </head>
-
 <body>
 
-<h1>🎨 Acrylic Paint Mixer Pro+</h1>
+<h1>🎨 Acrylic Paint Mixer Pro++</h1>
 
-<!-- SEARCH + FILTER -->
 <div class="controls">
   Search: <input type="text" id="searchBox" oninput="filterPaints()">
   Filter:
@@ -59,16 +33,8 @@ select option {
   </select>
 </div>
 
-<!-- COLORS -->
-<div>
-  Color 1: <select id="p1"></select> <input type="range" id="w1" min="0" max="100" value="50">
-</div>
-<div>
-  Color 2: <select id="p2"></select> <input type="range" id="w2" min="0" max="100" value="50">
-</div>
-<div>
-  Color 3: <select id="p3"></select> <input type="range" id="w3" min="0" max="100" value="0">
-</div>
+<div id="slidersContainer"></div>
+<button onclick="addSlider()">Add Color</button>
 
 <button onclick="mixPaints()">Mix</button>
 
@@ -82,182 +48,164 @@ select option {
   <div id="dryDiv" class="preview"></div>
 </div>
 
-<!-- CALIBRATION -->
 <h3>Dry Calibration</h3>
-Darken <input type="range" id="dryDarken" min="0.7" max="1" step="0.01" value="0.9"><br>
-Saturation <input type="range" id="drySaturation" min="0.8" max="1.5" step="0.01" value="1.1"><br>
-Contrast <input type="range" id="dryContrast" min="0.8" max="1.5" step="0.01" value="1.1"><br>
-Finish: <select id="finishType">
+Darken <input type="range" id="dryDarken" min="0.7" max="1" step="0.01" value="0.9" oninput="mixPaints()"><br>
+Saturation <input type="range" id="drySaturation" min="0.8" max="1.5" step="0.01" value="1.1" oninput="mixPaints()"><br>
+Contrast <input type="range" id="dryContrast" min="0.8" max="1.5" step="0.01" value="1.1" oninput="mixPaints()"><br>
+Finish: <select id="finishType" onchange="mixPaints()">
   <option value="matte">Matte</option>
   <option value="gloss">Gloss</option>
 </select>
 
-<!-- SAVE -->
 <h3>Saved Mixes</h3>
 <input id="mixName" placeholder="Mix name">
 <button onclick="saveMix()">Save</button>
 <div id="savedList"></div>
 
 <script>
-
-// 🎨 PAINT DATA
+// Pigment data
 const pigments = {
   white1:{name:"White", hex:"#ffffff", strength:0.5, family:"white"},
   grey1:{name:"Neutral Grey", hex:"#8a8a8a", strength:0.8, family:"white"},
   black1:{name:"Black", hex:"#111111", strength:1.2, family:"white"},
-
   yellow1:{name:"Lemon Yellow", hex:"#f4e300", strength:0.9, family:"yellow"},
   yellow2:{name:"Deep Yellow", hex:"#e0b000", strength:1.0, family:"yellow"},
-
   red1:{name:"Flat Red", hex:"#c73a2c", strength:1.1, family:"red"},
   red2:{name:"Dark Red", hex:"#8b1e1e", strength:1.2, family:"red"},
-
   blue1:{name:"Dark Blue", hex:"#1f3a93", strength:1.0, family:"blue"},
   blue2:{name:"Pastel Blue", hex:"#7fa9e1", strength:0.7, family:"blue"},
-
   green1:{name:"Olive Green", hex:"#5a6b2f", strength:1.0, family:"green"},
   green2:{name:"Deep Green", hex:"#1f5a3a", strength:1.0, family:"green"},
-
   brown1:{name:"Chocolate Brown", hex:"#4a2c1f", strength:1.1, family:"brown"},
   brown2:{name:"Beige Brown", hex:"#9c6b3b", strength:0.9, family:"brown"},
-
   skin1:{name:"Basic Skin Tone", hex:"#e0ac69", strength:0.8, family:"skin"},
-
   purple1:{name:"Royal Purple", hex:"#5a2a83", strength:1.1, family:"purple"}
 };
 
 let filteredKeys = Object.keys(pigments);
+let sliders = [];
 
-// 🔍 FILTER SYSTEM
+// FILTER
 function filterPaints(){
-  let search = searchBox.value.toLowerCase();
-  let family = filterFamily.value;
-
+  const search = searchBox.value.toLowerCase();
+  const family = filterFamily.value;
   filteredKeys = Object.keys(pigments).filter(k=>{
-    let p = pigments[k];
-    return (
-      (family==="all" || p.family===family) &&
-      p.name.toLowerCase().includes(search)
-    );
+    const p=pigments[k];
+    return (family==='all'||p.family===family) && p.name.toLowerCase().includes(search);
   });
-
-  loadDropdowns();
+  sliders.forEach(s=>updateDropdown(s.select));
 }
 
-// LOAD DROPDOWNS WITH SWATCHES
-function loadDropdowns(){
-  [p1,p2,p3].forEach(sel=>{
-    sel.innerHTML="";
-    filteredKeys.forEach(k=>{
-      let p = pigments[k];
-      let opt=document.createElement("option");
-      opt.value=k;
-      opt.textContent="  "+p.name; // spacing for swatch
-      sel.appendChild(opt);
-    });
+// ADD SLIDER
+function addSlider(){
+  const container=document.createElement("div");
+  container.className="slider-container";
+
+  const select=document.createElement("select");
+  updateDropdown(select);
+  select.oninput=mixPaints;
+
+  const slider=document.createElement("input");
+  slider.type="range"; slider.min=0; slider.max=100; slider.value=50;
+  slider.oninput=()=>{ slider.nextSibling.textContent=slider.value+"%"; mixPaints(); };
+
+  const percent=document.createElement("span");
+  percent.className="percent-display"; percent.textContent=slider.value+"%";
+
+  container.appendChild(select);
+  container.appendChild(slider);
+  container.appendChild(percent);
+
+  document.getElementById("slidersContainer").appendChild(container);
+  sliders.push({select, slider, percent});
+
+  mixPaints();
+}
+
+// UPDATE DROPDOWN OPTIONS
+function updateDropdown(select){
+  const val = select.value;
+  select.innerHTML="";
+  filteredKeys.forEach(k=>{
+    const p=pigments[k];
+    const opt=document.createElement("option");
+    opt.value=k;
+    opt.textContent=p.name;
+    select.appendChild(opt);
   });
+  select.value=val||filteredKeys[0];
 }
 
-// HELPERS
-function hexToRgb(hex){
-  let n=parseInt(hex.slice(1),16);
-  return {r:((n>>16)&255)/255,g:((n>>8)&255)/255,b:(n&255)/255};
-}
-function rgbToHex(r,g,b){
-  r=Math.min(Math.max(r,0),1);
-  g=Math.min(Math.max(g,0),1);
-  b=Math.min(Math.max(b,0),1);
-  return "#"+[r,g,b].map(x=>Math.round(x*255).toString(16).padStart(2,"0")).join("");
-}
-function toLinear(c){ return c<=0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055,2.4); }
-function toSRGB(c){ return c<=0.0031308 ? 12.92*c : 1.055*Math.pow(c,1/2.4)-0.055; }
+// COLOR HELPERS
+function hexToRgb(hex){let n=parseInt(hex.slice(1),16); return {r:((n>>16)&255)/255,g:((n>>8)&255)/255,b:(n&255)/255};}
+function rgbToHex(r,g,b){r=Math.min(Math.max(r,0),1); g=Math.min(Math.max(g,0),1); b=Math.min(Math.max(b,0),1); return "#"+[r,g,b].map(x=>Math.round(x*255).toString(16).padStart(2,"0")).join("");}
+function toLinear(c){return c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4);}
+function toSRGB(c){return c<=0.0031308?12.92*c:1.055*Math.pow(c,1/2.4)-0.055;}
 
-// MIX WITH SPECTRAL APPROXIMATION + FINISH
+// MIX
 function mixPaints(){
-  let inputs=[
-    {p:pigments[p1.value], w:+w1.value},
-    {p:pigments[p2.value], w:+w2.value},
-    {p:pigments[p3.value], w:+w3.value}
-  ];
-
-  let total=inputs.reduce((s,x)=>s+x.w,0);
+  let inputs = sliders.map(s=>({p:pigments[s.select.value], w:+s.slider.value}));
+  let total = inputs.reduce((a,b)=>a+b.w,0);
   if(!total) return;
   inputs.forEach(x=>x.w/=total);
 
-  // Spectral approximation: weighted linear + exponent for perceptual
   let r=0,g=0,b=0;
   inputs.forEach(({p,w})=>{
-    let c=hexToRgb(p.hex);
+    const c=hexToRgb(p.hex);
     r+=Math.pow(toLinear(c.r),1.1)*w*p.strength;
     g+=Math.pow(toLinear(c.g),1.1)*w*p.strength;
     b+=Math.pow(toLinear(c.b),1.1)*w*p.strength;
   });
-
   let wet={r:toSRGB(r),g:toSRGB(g),b:toSRGB(b)};
 
   // Dry
-  let darken=+dryDarken.value;
-  let sat=+drySaturation.value;
-  let contrast=+dryContrast.value;
-  let finish=finishType.value;
-
-  let avg=(wet.r+wet.g+wet.b)/3;
+  const darken=+dryDarken.value, sat=+drySaturation.value, contrast=+dryContrast.value;
+  const finish=finishType.value;
+  const avg=(wet.r+wet.g+wet.b)/3;
   let dry={
-    r:avg + (Math.pow(wet.r*darken,contrast)-avg)*sat,
-    g:avg + (Math.pow(wet.g*darken,contrast)-avg)*sat,
-    b:avg + (Math.pow(wet.b*darken,contrast)-avg)*sat
+    r:avg+(Math.pow(wet.r*darken,contrast)-avg)*sat,
+    g:avg+(Math.pow(wet.g*darken,contrast)-avg)*sat,
+    b:avg+(Math.pow(wet.b*darken,contrast)-avg)*sat
   };
 
-  // Matte vs Gloss: gloss slightly brighter + more reflective
-  if(finish==="gloss"){
-    dry.r = Math.min(dry.r*1.05 + 0.02,1);
-    dry.g = Math.min(dry.g*1.05 + 0.02,1);
-    dry.b = Math.min(dry.b*1.05 + 0.02,1);
-  }
-
+  if(finish==="gloss"){dry.r=Math.min(dry.r*1.05+0.02,1); dry.g=Math.min(dry.g*1.05+0.02,1); dry.b=Math.min(dry.b*1.05+0.02,1);}
   wetDiv.style.backgroundColor=rgbToHex(wet.r,wet.g,wet.b);
   dryDiv.style.backgroundColor=rgbToHex(dry.r,dry.g,dry.b);
 }
 
 // SAVE / LOAD
 function saveMix(){
-  let mix={
-    name:mixName.value||"mix",
-    p1:p1.value,w1:w1.value,
-    p2:p2.value,w2:w2.value,
-    p3:p3.value,w3:w3.value,
-    finish:finishType.value
-  };
+  let mix={name:mixName.value||"mix", finish:finishType.value};
+  sliders.forEach((s,i)=>{ mix["p"+i]=s.select.value; mix["w"+i]=s.slider.value; });
   let data=JSON.parse(localStorage.getItem("mixes")||"[]");
-  data.push(mix);
-  localStorage.setItem("mixes",JSON.stringify(data));
+  data.push(mix); localStorage.setItem("mixes",JSON.stringify(data));
   renderSaved();
 }
 
 function loadMix(m){
-  p1.value=m.p1; w1.value=m.w1;
-  p2.value=m.p2; w2.value=m.w2;
-  p3.value=m.p3; w3.value=m.w3;
+  sliders.forEach((s,i)=>{
+    s.select.value=m["p"+i]||s.select.value;
+    s.slider.value=m["w"+i]||s.slider.value;
+    s.percent.textContent=s.slider.value+"%";
+  });
   finishType.value=m.finish||"matte";
   mixPaints();
 }
 
 function renderSaved(){
-  let data=JSON.parse(localStorage.getItem("mixes")||"[]");
+  const data=JSON.parse(localStorage.getItem("mixes")||"[]");
   savedList.innerHTML="";
   data.forEach(m=>{
-    let d=document.createElement("div");
-    d.className="savedMix";
-    d.textContent=m.name;
-    d.onclick=()=>loadMix(m);
-    savedList.appendChild(d);
+    const d=document.createElement("div");
+    d.className="savedMix"; d.textContent=m.name;
+    d.onclick=()=>loadMix(m); savedList.appendChild(d);
   });
 }
 
 // INIT
+addSlider(); addSlider(); addSlider(); // default 3
 filterPaints();
 renderSaved();
-
 </script>
 
 </body>

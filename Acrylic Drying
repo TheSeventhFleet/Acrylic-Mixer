@@ -6,99 +6,69 @@
 <title>Vallejo Acrylic Mixer</title>
 <style>
   body { font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px; }
-  .mix-container { display: flex; gap: 20px; flex-wrap: wrap; }
+  .container { display: flex; flex-wrap: wrap; gap: 20px; }
   .controls { flex: 1 1 300px; }
-  .preview { flex: 1 1 300px; height: 200px; border: 1px solid #ccc; border-radius: 8px; }
-  select { width: 100%; margin-bottom: 10px; }
+  .preview { flex: 1 1 300px; height: 200px; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 10px; }
+  select, input[type=file] { width: 100%; margin-bottom: 10px; }
   .slider-container { display: flex; align-items: center; margin-bottom: 5px; }
   .slider-container input[type=range] { flex: 1; margin-right: 10px; }
   .swatch { display: inline-block; width: 14px; height: 14px; margin-right: 5px; vertical-align: middle; border: 1px solid #000; }
-  .toggle-btn { margin-bottom: 10px; }
+  .toggle-btn, .wetdry-btn { margin-bottom: 10px; }
+  #imagePreview { max-width: 300px; max-height: 200px; display:block; margin-bottom: 10px; border:1px solid #ccc; }
+  .suggestions { margin-top:10px; background:#fff; padding:10px; border-radius:5px; border:1px solid #ccc; }
 </style>
 </head>
 <body>
 <h1>Vallejo Acrylic Mixer</h1>
 <button id="toggleCodes" class="toggle-btn">Show Paint Codes</button>
-<div class="mix-container">
+<button id="toggleWetDry" class="wetdry-btn">Toggle Wet / Dry</button>
+<div class="container">
   <div class="controls" id="controls"></div>
-  <div class="preview" id="preview"></div>
+  <div>
+    <div class="preview" id="preview"></div>
+    <img id="imagePreview" alt="Uploaded image will appear here">
+    <input type="file" id="imageInput" accept="image/*">
+    <div class="suggestions" id="suggestions"></div>
+  </div>
 </div>
-<input type="file" id="imageInput" accept="image/*">
 <canvas id="imageCanvas" style="display:none;"></canvas>
 <script>
-// Sample Vallejo pigments dataset (subset for demonstration, ~20 paints, real file would include ~620)
+// Pigments dataset (subset demo)
 const pigments = [
   {code:'70.901', name:'Pastel Blue', line:'Model Color', family:'Blues', hex:'#7fa9e1'},
   {code:'70.930', name:'Dark Blue', line:'Model Color', family:'Blues', hex:'#1f3a93'},
   {code:'71001', name:'Air White', line:'Model Air', family:'Whites', hex:'#f7f7f7'},
   {code:'71015', name:'Air Red', line:'Model Air', family:'Reds', hex:'#c92f2d'},
   {code:'777', name:'Ork Skin', line:'Game Color', family:'Skin Tones', hex:'#8c7c55'},
-  {code:'700', name:'Chaos Black', line:'Game Color', family:'Whites/Greys', hex:'#111111'},
-  {code:'70901', name:'Flat White', line:'Model Color', family:'Whites', hex:'#ffffff'},
-  {code:'70926', name:'Flat Red', line:'Model Color', family:'Reds', hex:'#c32b2b'},
-  {code:'70946', name:'Dark Red', line:'Model Color', family:'Reds', hex:'#8b1c1c'},
-  {code:'71007', name:'Air Blue', line:'Model Air', family:'Blues', hex:'#3b6abf'},
-  {code:'71015', name:'Air Red', line:'Model Air', family:'Reds', hex:'#d13838'},
-  {code:'71070', name:'Air Yellow', line:'Model Air', family:'Yellows', hex:'#f5e342'},
-  {code:'70990', name:'Flat Yellow', line:'Model Color', family:'Yellows', hex:'#f9ea36'},
-  {code:'70822', name:'Flat Green', line:'Model Color', family:'Greens', hex:'#1b6e20'},
-  {code:'70902', name:'Light Blue', line:'Model Color', family:'Blues', hex:'#a0c4e7'},
-  {code:'70990', name:'Flat Yellow', line:'Model Color', family:'Yellows', hex:'#f9ea36'},
-  {code:'70941', name:'Dark Green', line:'Model Color', family:'Greens', hex:'#1a4e20'},
-  {code:'70925', name:'Orange', line:'Model Color', family:'Oranges', hex:'#ff7f2a'},
-  {code:'70927', name:'Flat Brown', line:'Model Color', family:'Browns', hex:'#7a5230'},
-  {code:'71071', name:'Air Orange', line:'Model Air', family:'Oranges', hex:'#ff9b45'}
+  {code:'700', name:'Chaos Black', line:'Game Color', family:'Whites/Greys', hex:'#111111'}
 ];
 
 let showCodes = false;
+let wet = true;
 
-// Organize pigments by family
 const pigmentsByFamily = {};
-pigments.forEach(p => {
-  if(!pigmentsByFamily[p.family]) pigmentsByFamily[p.family] = [];
-  pigmentsByFamily[p.family].push(p);
-});
+pigments.forEach(p => { if(!pigmentsByFamily[p.family]) pigmentsByFamily[p.family]=[]; pigmentsByFamily[p.family].push(p); });
 
-// DOM elements
 const controlsDiv = document.getElementById('controls');
 const previewDiv = document.getElementById('preview');
 const toggleBtn = document.getElementById('toggleCodes');
+const toggleWetDryBtn = document.getElementById('toggleWetDry');
+const imageInput = document.getElementById('imageInput');
+const imagePreview = document.getElementById('imagePreview');
+const imageCanvas = document.getElementById('imageCanvas');
+const ctx = imageCanvas.getContext('2d');
+const suggestionsDiv = document.getElementById('suggestions');
 
-// Function to create pigment sliders
 function createSliders(){
-  controlsDiv.innerHTML = '';
-  Object.keys(pigmentsByFamily).forEach(family => {
-    const header = document.createElement('h3');
-    header.textContent = family;
-    controlsDiv.appendChild(header);
-
-    pigmentsByFamily[family].forEach(p => {
-      const container = document.createElement('div');
-      container.className = 'slider-container';
-
-      const swatch = document.createElement('span');
-      swatch.className = 'swatch';
-      swatch.style.backgroundColor = p.hex;
-      container.appendChild(swatch);
-
-      const label = document.createElement('label');
-      label.textContent = showCodes ? `${p.name} (${p.code})` : p.name;
-      container.appendChild(label);
-
-      const slider = document.createElement('input');
-      slider.type = 'range';
-      slider.min = 0;
-      slider.max = 100;
-      slider.value = 0;
-      slider.dataset.hex = p.hex;
-      slider.addEventListener('input', updateMix);
-      container.appendChild(slider);
-
-      const percent = document.createElement('span');
-      percent.textContent = '0%';
-      slider.addEventListener('input', ()=> percent.textContent = slider.value + '%');
-      container.appendChild(percent);
-
+  controlsDiv.innerHTML='';
+  Object.keys(pigmentsByFamily).forEach(family=>{
+    const header = document.createElement('h3'); header.textContent=family; controlsDiv.appendChild(header);
+    pigmentsByFamily[family].forEach(p=>{
+      const container = document.createElement('div'); container.className='slider-container';
+      const swatch = document.createElement('span'); swatch.className='swatch'; swatch.style.backgroundColor=p.hex; container.appendChild(swatch);
+      const label = document.createElement('label'); label.textContent = showCodes ? `${p.name} (${p.code})` : p.name; container.appendChild(label);
+      const slider = document.createElement('input'); slider.type='range'; slider.min=0; slider.max=100; slider.value=0; slider.dataset.hex=p.hex; slider.addEventListener('input', ()=>{updateMix(); percent.textContent=slider.value+'%';}); container.appendChild(slider);
+      const percent = document.createElement('span'); percent.textContent='0%'; container.appendChild(percent);
       controlsDiv.appendChild(container);
     });
   });
@@ -106,76 +76,63 @@ function createSliders(){
 
 function updateMix(){
   let r=0,g=0,b=0,total=0;
-  const sliders = controlsDiv.querySelectorAll('input[type=range]');
-  sliders.forEach(slider => {
-    const weight = parseInt(slider.value);
+  controlsDiv.querySelectorAll('input[type=range]').forEach(slider=>{
+    const weight=parseInt(slider.value);
     if(weight>0){
-      const hex = slider.dataset.hex;
-      const c = hexToRgb(hex);
-      r += c.r*weight;
-      g += c.g*weight;
-      b += c.b*weight;
-      total += weight;
+      const c=hexToRgb(slider.dataset.hex);
+      r+=c.r*weight; g+=c.g*weight; b+=c.b*weight; total+=weight;
     }
   });
-  if(total>0){ r=Math.round(r/total); g=Math.round(g/total); b=Math.round(b/total); }
-  previewDiv.style.backgroundColor = `rgb(${r},${g},${b})`;
+  if(total>0){r=Math.round(r/total); g=Math.round(g/total); b=Math.round(b/total);}
+  if(!wet){r=Math.round(r*0.85); g=Math.round(g*0.85); b=Math.round(b*0.85);} // dry approx
+  previewDiv.style.backgroundColor=`rgb(${r},${g},${b})`;
 }
 
-function hexToRgb(hex){
-  const bigint = parseInt(hex.replace('#',''),16);
-  const r = (bigint >> 16) & 255;
-  const g = (bigint >> 8) & 255;
-  const b = bigint & 255;
-  return {r,g,b};
-}
+function hexToRgb(hex){ const bigint=parseInt(hex.replace('#',''),16); return {r:(bigint>>16)&255, g:(bigint>>8)&255, b:bigint&255}; }
 
-toggleBtn.addEventListener('click', ()=>{
-  showCodes = !showCodes;
-  createSliders();
-});
+toggleBtn.addEventListener('click', ()=>{showCodes=!showCodes; createSliders();});
+toggleWetDryBtn.addEventListener('click', ()=>{wet=!wet; updateMix();});
 
 createSliders();
 
-// Image color picker
-const imageInput = document.getElementById('imageInput');
-const imageCanvas = document.getElementById('imageCanvas');
-const ctx = imageCanvas.getContext('2d');
-
+// Image picker
 imageInput.addEventListener('change', e=>{
-  const file = e.target.files[0];
-  const img = new Image();
-  img.onload = ()=>{
-    imageCanvas.width = img.width;
-    imageCanvas.height = img.height;
+  const file=e.target.files[0];
+  const img=new Image();
+  img.onload=()=>{
+    imageCanvas.width=img.width; imageCanvas.height=img.height;
     ctx.drawImage(img,0,0);
-    previewDiv.addEventListener('click', pickColorFromImage);
+    imagePreview.src=img.src;
+    imagePreview.addEventListener('click', pickColorFromImage);
   };
-  img.src = URL.createObjectURL(file);
+  img.src=URL.createObjectURL(file);
 });
 
 function pickColorFromImage(e){
-  const rect = previewDiv.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
-  const pixel = ctx.getImageData(x,y,1,1).data;
+  const rect=imagePreview.getBoundingClientRect();
+  const scaleX=imageCanvas.width/rect.width;
+  const scaleY=imageCanvas.height/rect.height;
+  const x=Math.floor((e.clientX-rect.left)*scaleX);
+  const y=Math.floor((e.clientY-rect.top)*scaleY);
+  const pixel=ctx.getImageData(x,y,1,1).data;
   suggestMix(pixel[0],pixel[1],pixel[2]);
 }
 
 function suggestMix(r,g,b){
-  // Simple nearest color suggestion (can improve with more advanced algorithms)
-  let best = null, bestDist=Infinity;
-  pigments.forEach(p=>{
-    const c = hexToRgb(p.hex);
-    const dist = Math.sqrt(Math.pow(c.r-r,2)+Math.pow(c.g-g,2)+Math.pow(c.b-b,2));
-    if(dist<bestDist){ bestDist=dist; best=p; }
+  // Simple nearest color suggestion
+  const distances=pigments.map(p=>{
+    const c=hexToRgb(p.hex);
+    return {pigment:p, dist:Math.sqrt(Math.pow(c.r-r,2)+Math.pow(c.g-g,2)+Math.pow(c.b-b,2))};
   });
+  distances.sort((a,b)=>a.dist-b.dist);
+  const top3=distances.slice(0,3);
   // Reset sliders
-  controlsDiv.querySelectorAll('input[type=range]').forEach(slider=> slider.value=0);
-  // Set suggested slider to 100%
-  const slider = Array.from(controlsDiv.querySelectorAll('input[type=range]')).find(s=> s.dataset.hex===best.hex);
-  if(slider) slider.value=100; updateMix();
-}
-</script>
-</body>
-</html>
+  controlsDiv.querySelectorAll('input[type=range]').forEach(slider=>slider.value=0);
+  // Set suggested sliders
+  top3.forEach(d=>{
+    const slider=Array.from(controlsDiv.querySelectorAll('input[type=range]')).find(s=>s.dataset.hex===d.pigment.hex);
+    if(slider) slider.value=Math.round(100/(top3.length));
+  });
+  updateMix();
+  // Show suggestions
+  suggestionsDiv.innerHTML='<strong>Suggested mix:</strong><br>'+top3.map(d=>`${d.pigment.name} (${d.pigment.line}) ~ ${Math.round(100/(top3.length))}%`).joi

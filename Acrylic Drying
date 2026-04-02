@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vallejo Acrylic Mixer - Dropdown & Wet/Dry</title>
+<title>Vallejo Acrylic Mixer - Fixed Color Picker</title>
 <style>
 body { font-family: Arial, sans-serif; background:#f4f4f4; padding:20px; }
 .container { display:flex; flex-wrap:wrap; gap:20px; }
@@ -12,10 +12,10 @@ body { font-family: Arial, sans-serif; background:#f4f4f4; padding:20px; }
 .control-row label { width:80px; }
 .control-row select, .control-row input[type=range] { flex:1; }
 .add-btn { margin-top:10px; }
-.previews { display:flex; gap:10px; margin-top:20px; }
-.preview { flex:1; height:100px; border-radius:8px; border:1px solid #ccc; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#fff; font-size:16px; }
+.previews { display:flex; flex-direction:column; gap:10px; margin-top:20px; }
+.preview { width:150px; height:150px; border-radius:8px; border:1px solid #ccc; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#fff; font-size:16px; }
 #imagePicker { flex:1 1 250px; }
-#imagePreview { max-width:100%; max-height:200px; border:1px solid #ccc; cursor:crosshair; display:block; margin-bottom:10px; }
+#imagePreview { max-width:100%; border:1px solid #ccc; cursor:crosshair; display:block; margin-bottom:10px; }
 .suggestions { margin-top:10px; padding:5px; background:#fff; border:1px solid #ccc; border-radius:5px; }
 </style>
 </head>
@@ -133,6 +133,7 @@ imageInput.addEventListener('change', e=>{
   if(!file) return;
   const img = new Image();
   img.onload = ()=>{
+    // Draw the image to canvas at **exact displayed size**
     imageCanvas.width = imagePreview.width;
     imageCanvas.height = imagePreview.height;
     ctx.drawImage(img,0,0,imageCanvas.width,imageCanvas.height);
@@ -145,8 +146,10 @@ imageInput.addEventListener('change', e=>{
 // Pick color from image
 imagePreview.addEventListener('click', e=>{
   const rect = imagePreview.getBoundingClientRect();
-  const x = Math.floor((e.clientX - rect.left)*(imageCanvas.width/rect.width));
-  const y = Math.floor((e.clientY - rect.top)*(imageCanvas.height/rect.height));
+  const scaleX = imageCanvas.width / rect.width;
+  const scaleY = imageCanvas.height / rect.height;
+  const x = Math.floor((e.clientX - rect.left) * scaleX);
+  const y = Math.floor((e.clientY - rect.top) * scaleY);
   const pixel = ctx.getImageData(x,y,1,1).data;
   suggestMix(pixel[0],pixel[1],pixel[2]);
 });
@@ -169,6 +172,10 @@ function suggestMix(r,g,b){
   });
   updateMix();
   suggestionsDiv.innerHTML = '<strong>Suggested mix:</strong><br>'+top3.map(d=>`${d.pigment.name} (${d.pigment.line}) ~ ${Math.round(100/top3.length)}%`).join('<br>');
+}
+</script>
+</body>
+</html>
 }
 </script>
 </body>

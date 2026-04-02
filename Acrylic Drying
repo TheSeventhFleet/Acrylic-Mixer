@@ -3,13 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vallejo Acrylic Mixer - Fixed Color Picker</title>
+<title>Vallejo Acrylic Mixer - Full Version</title>
 <style>
 body { font-family: Arial, sans-serif; background:#f4f4f4; padding:20px; }
 .container { display:flex; flex-wrap:wrap; gap:20px; }
 .controls { flex:1 1 400px; background:#fff; padding:15px; border-radius:8px; box-shadow:0 0 5px rgba(0,0,0,0.2);}
 .control-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
-.control-row label { width:80px; }
 .control-row select, .control-row input[type=range] { flex:1; }
 .add-btn { margin-top:10px; }
 .previews { display:flex; flex-direction:column; gap:10px; margin-top:20px; }
@@ -72,7 +71,7 @@ function hexToRgb(hex){
   return {r:(bigint>>16)&255, g:(bigint>>8)&255, b:bigint&255};
 }
 
-// Add a color row
+// Add a single color row
 function addColorRow(selectedColor=null){
   const row = document.createElement('div');
   row.className='control-row';
@@ -86,7 +85,7 @@ function addColorRow(selectedColor=null){
   slider.type='range'; slider.min=0; slider.max=100; slider.value=50; slider.style.display='none';
   row.appendChild(slider);
 
-  // Show slider when color is selected
+  // Show slider only when color is selected
   select.addEventListener('change', ()=>{
     slider.style.display = select.value ? 'block' : 'none';
     updateMix();
@@ -121,10 +120,10 @@ function updateMix(){
   previewDry.style.color = (rDry+gDry+bDry<200)?'#fff':'#000';
 }
 
-// Add first row by default
+// Start with one row
 addColorRow();
 
-// Add more rows
+// Add new row when clicking button
 addColorBtn.addEventListener('click', ()=>addColorRow());
 
 // Image upload
@@ -133,9 +132,10 @@ imageInput.addEventListener('change', e=>{
   if(!file) return;
   const img = new Image();
   img.onload = ()=>{
-    // Draw the image to canvas at **exact displayed size**
-    imageCanvas.width = imagePreview.width;
-    imageCanvas.height = imagePreview.height;
+    // Draw image to canvas at **displayed size**
+    imageCanvas.width = imagePreview.clientWidth;
+    imageCanvas.height = imagePreview.clientHeight;
+    ctx.clearRect(0,0,imageCanvas.width,imageCanvas.height);
     ctx.drawImage(img,0,0,imageCanvas.width,imageCanvas.height);
     imagePreview.src = img.src;
     suggestionsDiv.innerHTML='';
@@ -154,7 +154,7 @@ imagePreview.addEventListener('click', e=>{
   suggestMix(pixel[0],pixel[1],pixel[2]);
 });
 
-// Suggest top 3 pigments
+// Suggest nearest pigments
 function suggestMix(r,g,b){
   const distances = pigments.map(p=>{
     const c = hexToRgb(p.hex);
@@ -162,20 +162,23 @@ function suggestMix(r,g,b){
   });
   distances.sort((a,b)=>a.dist-b.dist);
   const top3 = distances.slice(0,3);
-  colorRows.forEach(c=>{ c.select.value=''; c.slider.value=50; c.slider.style.display='none'; });
+
+  colorRows.forEach(c=>{
+    c.select.value=''; 
+    c.slider.value=50; 
+    c.slider.style.display='none';
+  });
+
   top3.forEach((d,i)=>{
     if(i<colorRows.length){
       colorRows[i].select.value = d.pigment.hex;
       colorRows[i].slider.style.display='block';
       colorRows[i].slider.value = Math.round(100/top3.length);
-    } else addColorRow(d.pigment.hex);
+    }
   });
+
   updateMix();
   suggestionsDiv.innerHTML = '<strong>Suggested mix:</strong><br>'+top3.map(d=>`${d.pigment.name} (${d.pigment.line}) ~ ${Math.round(100/top3.length)}%`).join('<br>');
-}
-</script>
-</body>
-</html>
 }
 </script>
 </body>

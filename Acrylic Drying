@@ -3,19 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vallejo Acrylic Mixer - Dropdown Design</title>
+<title>Vallejo Acrylic Mixer - Dropdown & Wet/Dry</title>
 <style>
 body { font-family: Arial, sans-serif; background:#f4f4f4; padding:20px; }
 .container { display:flex; flex-wrap:wrap; gap:20px; }
-.controls { flex:1 1 400px; background:#fff; padding:10px; border-radius:8px; box-shadow:0 0 5px rgba(0,0,0,0.2);}
-.control-row { display:flex; align-items:center; gap:10px; margin-bottom:5px; }
-.control-row label { flex:1; }
-.control-row select, .control-row input[type=range] { flex:2; }
+.controls { flex:1 1 400px; background:#fff; padding:15px; border-radius:8px; box-shadow:0 0 5px rgba(0,0,0,0.2);}
+.control-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.control-row label { width:80px; }
+.control-row select, .control-row input[type=range] { flex:1; }
 .add-btn { margin-top:10px; }
-.previews { flex:1 1 200px; display:flex; flex-direction:column; gap:10px; }
-.preview { height:100px; border-radius:8px; border:1px solid #ccc; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#fff; font-size:16px; }
-#imagePicker { margin-top:20px; }
-#imagePreview { max-width:300px; max-height:200px; border:1px solid #ccc; cursor:crosshair; display:block; margin-bottom:10px; }
+.previews { display:flex; gap:10px; margin-top:20px; }
+.preview { flex:1; height:100px; border-radius:8px; border:1px solid #ccc; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#fff; font-size:16px; }
+#imagePicker { flex:1 1 250px; }
+#imagePreview { max-width:100%; max-height:200px; border:1px solid #ccc; cursor:crosshair; display:block; margin-bottom:10px; }
 .suggestions { margin-top:10px; padding:5px; background:#fff; border:1px solid #ccc; border-radius:5px; }
 </style>
 </head>
@@ -86,10 +86,9 @@ function addColorRow(selectedColor=null){
   slider.type='range'; slider.min=0; slider.max=100; slider.value=50; slider.style.display='none';
   row.appendChild(slider);
 
-  // Show slider when a color is selected
+  // Show slider when color is selected
   select.addEventListener('change', ()=>{
-    if(select.value) slider.style.display='block';
-    else slider.style.display='none';
+    slider.style.display = select.value ? 'block' : 'none';
     updateMix();
   });
 
@@ -97,6 +96,7 @@ function addColorRow(selectedColor=null){
 
   colorControls.appendChild(row);
   colorRows.push({select, slider});
+  updateMix();
 }
 
 // Update Wet/Dry previews
@@ -121,10 +121,10 @@ function updateMix(){
   previewDry.style.color = (rDry+gDry+bDry<200)?'#fff':'#000';
 }
 
-// Add first color row by default
+// Add first row by default
 addColorRow();
 
-// Add more colors
+// Add more rows
 addColorBtn.addEventListener('click', ()=>addColorRow());
 
 // Image upload
@@ -133,7 +133,6 @@ imageInput.addEventListener('change', e=>{
   if(!file) return;
   const img = new Image();
   img.onload = ()=>{
-    // Set canvas to displayed image size
     imageCanvas.width = imagePreview.width;
     imageCanvas.height = imagePreview.height;
     ctx.drawImage(img,0,0,imageCanvas.width,imageCanvas.height);
@@ -146,13 +145,13 @@ imageInput.addEventListener('change', e=>{
 // Pick color from image
 imagePreview.addEventListener('click', e=>{
   const rect = imagePreview.getBoundingClientRect();
-  const x = Math.floor((e.clientX - rect.left) * (imageCanvas.width / rect.width));
-  const y = Math.floor((e.clientY - rect.top) * (imageCanvas.height / rect.height));
+  const x = Math.floor((e.clientX - rect.left)*(imageCanvas.width/rect.width));
+  const y = Math.floor((e.clientY - rect.top)*(imageCanvas.height/rect.height));
   const pixel = ctx.getImageData(x,y,1,1).data;
   suggestMix(pixel[0],pixel[1],pixel[2]);
 });
 
-// Suggest top 3 pigments for clicked color
+// Suggest top 3 pigments
 function suggestMix(r,g,b){
   const distances = pigments.map(p=>{
     const c = hexToRgb(p.hex);

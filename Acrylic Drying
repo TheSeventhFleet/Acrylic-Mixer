@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vallejo Acrylic Mixer - Integrated Picker</title>
+<title>Vallejo Acrylic Mixer - Accurate Picker</title>
 <style>
 body { font-family: Arial, sans-serif; background:#f4f4f4; padding:20px; }
 .container { display:flex; flex-wrap:wrap; gap:20px; }
@@ -15,7 +15,8 @@ body { font-family: Arial, sans-serif; background:#f4f4f4; padding:20px; }
 .preview { width:150px; height:150px; border-radius:8px; border:1px solid #ccc; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#fff; font-size:16px; }
 #imagePicker { flex:1 1 250px; }
 #imagePreview { max-width:100%; border:1px solid #ccc; cursor:crosshair; display:block; margin-bottom:10px; }
-.suggestions { margin-top:10px; padding:5px; background:#fff; border:1px solid #ccc; border-radius:5px; }
+.suggestions { margin-top:10px; padding:5px; background:#fff; border:1px solid #ccc; border-radius:5px; font-size:14px; }
+.swatch { width:16px; height:16px; display:inline-block; margin-right:5px; border:1px solid #000; vertical-align:middle; }
 </style>
 </head>
 <body>
@@ -171,40 +172,36 @@ imagePreview.addEventListener('click', e=>{
   g = Math.round(g/count);
   b = Math.round(b/count);
 
-  // Auto-fill as many new rows as needed for closest match
-  suggestMix(r,g,b);
+  // Suggest nearest pigments without blending them yet
+  suggestPigments(r,g,b);
 });
 
-// Suggest nearest pigments and auto-fill new rows
-function suggestMix(r,g,b){
+// Suggest pigments but do not auto-mix
+function suggestPigments(r,g,b){
   const distances = pigments.map(p=>{
     const c = hexToRgb(p.hex);
     return {pigment:p, dist:Math.sqrt((c.r-r)**2 + (c.g-g)**2 + (c.b-b)**2)};
   });
   distances.sort((a,b)=>a.dist-b.dist);
-  
-  // Clear current selections
-  colorRows.forEach(c=>{
-    c.select.value=''; 
-    c.slider.value=50; 
-    c.slider.style.display='none';
-  });
 
   // Ensure enough rows
   while(colorRows.length<distances.length){
     addColorRow();
   }
 
-  // Fill rows with top pigments
+  // Fill rows with top pigments but keep slider at default
   distances.forEach((d,i)=>{
     colorRows[i].select.value = d.pigment.hex;
     colorRows[i].slider.style.display='block';
-    colorRows[i].slider.value = Math.round(100/distances.length);
+    colorRows[i].slider.value=50;
   });
 
   updateMix();
-  suggestionsDiv.innerHTML = '<strong>Suggested mix:</strong><br>'+distances.slice(0,3)
-      .map(d=>`${d.pigment.name} (${d.pigment.line}) ~ ${Math.round(100/distances.length)}%`).join('<br>');
+
+  // Display swatches in suggestions
+  suggestionsDiv.innerHTML = '<strong>Suggested pigments:</strong><br>'+distances.slice(0,5)
+    .map(d=>`<span class="swatch" style="background:${d.pigment.hex}"></span>${d.pigment.name} (${d.pigment.line})`)
+    .join('<br>');
 }
 </script>
 </body>

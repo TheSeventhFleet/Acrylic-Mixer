@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vallejo Acrylic Mixer - Accurate Color Picker</title>
+<title>Vallejo Acrylic Mixer - Photoshop-style Picker</title>
 <style>
 body { font-family: Arial, sans-serif; background:#f4f4f4; padding:20px; }
 .container { display:flex; flex-wrap:wrap; gap:20px; }
@@ -146,8 +146,8 @@ imageInput.addEventListener('change', e=>{
   img.src = URL.createObjectURL(file);
 });
 
-// Pick color from image using 3x3 pixel averaging
-function pickColorFromCanvas(e){
+// Photoshop-style color picker
+imagePreview.addEventListener('click', e=>{
   if(!fullImage) return;
 
   const rect = imagePreview.getBoundingClientRect();
@@ -157,6 +157,7 @@ function pickColorFromCanvas(e){
   const xCenter = Math.floor((e.clientX - rect.left) * scaleX);
   const yCenter = Math.floor((e.clientY - rect.top) * scaleY);
 
+  // 3x3 averaging for smooth picks
   let r=0, g=0, b=0, count=0;
   for(let dx=-1; dx<=1; dx++){
     for(let dy=-1; dy<=1; dy++){
@@ -172,8 +173,7 @@ function pickColorFromCanvas(e){
   b = Math.round(b/count);
 
   suggestMix(r,g,b);
-}
-imagePreview.addEventListener('click', pickColorFromCanvas);
+});
 
 // Suggest nearest pigments
 function suggestMix(r,g,b){

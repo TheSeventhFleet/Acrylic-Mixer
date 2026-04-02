@@ -2,211 +2,180 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Acrylic Paint Mixer Pro++</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vallejo Acrylic Mixer</title>
 <style>
-body { font-family: Arial; text-align: center; background:#f4f4f4; }
-.preview { width:150px; height:150px; border:2px solid black; display:inline-block; margin:10px; }
-.savedMix { cursor:pointer; padding:5px; border:1px solid black; margin:3px; background:white; }
-.controls { margin:10px; }
-.slider-container { margin:8px; }
-.percent-display { font-weight:bold; margin-left:5px; }
-button { margin:5px; }
+  body { font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px; }
+  .mix-container { display: flex; gap: 20px; flex-wrap: wrap; }
+  .controls { flex: 1 1 300px; }
+  .preview { flex: 1 1 300px; height: 200px; border: 1px solid #ccc; border-radius: 8px; }
+  select { width: 100%; margin-bottom: 10px; }
+  .slider-container { display: flex; align-items: center; margin-bottom: 5px; }
+  .slider-container input[type=range] { flex: 1; margin-right: 10px; }
+  .swatch { display: inline-block; width: 14px; height: 14px; margin-right: 5px; vertical-align: middle; border: 1px solid #000; }
+  .toggle-btn { margin-bottom: 10px; }
 </style>
 </head>
 <body>
-
-<h1>🎨 Acrylic Paint Mixer Pro++</h1>
-
-<div class="controls">
-  Search: <input type="text" id="searchBox" oninput="filterPaints()">
-  Filter:
-  <select id="filterFamily" onchange="filterPaints()">
-    <option value="all">All</option>
-    <option value="white">White/Grey</option>
-    <option value="yellow">Yellow</option>
-    <option value="red">Red</option>
-    <option value="blue">Blue</option>
-    <option value="green">Green</option>
-    <option value="brown">Brown</option>
-    <option value="skin">Skin</option>
-    <option value="purple">Purple</option>
-  </select>
+<h1>Vallejo Acrylic Mixer</h1>
+<button id="toggleCodes" class="toggle-btn">Show Paint Codes</button>
+<div class="mix-container">
+  <div class="controls" id="controls"></div>
+  <div class="preview" id="preview"></div>
 </div>
-
-<div id="slidersContainer"></div>
-<button onclick="addSlider()">Add Color</button>
-
-<button onclick="mixPaints()">Mix</button>
-
-<h2>Results</h2>
-<div>
-  <p>Wet</p>
-  <div id="wetDiv" class="preview"></div>
-</div>
-<div>
-  <p>Dry</p>
-  <div id="dryDiv" class="preview"></div>
-</div>
-
-<h3>Dry Calibration</h3>
-Darken <input type="range" id="dryDarken" min="0.7" max="1" step="0.01" value="0.9" oninput="mixPaints()"><br>
-Saturation <input type="range" id="drySaturation" min="0.8" max="1.5" step="0.01" value="1.1" oninput="mixPaints()"><br>
-Contrast <input type="range" id="dryContrast" min="0.8" max="1.5" step="0.01" value="1.1" oninput="mixPaints()"><br>
-Finish: <select id="finishType" onchange="mixPaints()">
-  <option value="matte">Matte</option>
-  <option value="gloss">Gloss</option>
-</select>
-
-<h3>Saved Mixes</h3>
-<input id="mixName" placeholder="Mix name">
-<button onclick="saveMix()">Save</button>
-<div id="savedList"></div>
-
+<input type="file" id="imageInput" accept="image/*">
+<canvas id="imageCanvas" style="display:none;"></canvas>
 <script>
-// Pigment data
-const pigments = {
-  white1:{name:"White", hex:"#ffffff", strength:0.5, family:"white"},
-  grey1:{name:"Neutral Grey", hex:"#8a8a8a", strength:0.8, family:"white"},
-  black1:{name:"Black", hex:"#111111", strength:1.2, family:"white"},
-  yellow1:{name:"Lemon Yellow", hex:"#f4e300", strength:0.9, family:"yellow"},
-  yellow2:{name:"Deep Yellow", hex:"#e0b000", strength:1.0, family:"yellow"},
-  red1:{name:"Flat Red", hex:"#c73a2c", strength:1.1, family:"red"},
-  red2:{name:"Dark Red", hex:"#8b1e1e", strength:1.2, family:"red"},
-  blue1:{name:"Dark Blue", hex:"#1f3a93", strength:1.0, family:"blue"},
-  blue2:{name:"Pastel Blue", hex:"#7fa9e1", strength:0.7, family:"blue"},
-  green1:{name:"Olive Green", hex:"#5a6b2f", strength:1.0, family:"green"},
-  green2:{name:"Deep Green", hex:"#1f5a3a", strength:1.0, family:"green"},
-  brown1:{name:"Chocolate Brown", hex:"#4a2c1f", strength:1.1, family:"brown"},
-  brown2:{name:"Beige Brown", hex:"#9c6b3b", strength:0.9, family:"brown"},
-  skin1:{name:"Basic Skin Tone", hex:"#e0ac69", strength:0.8, family:"skin"},
-  purple1:{name:"Royal Purple", hex:"#5a2a83", strength:1.1, family:"purple"}
-};
+// Sample Vallejo pigments dataset (subset for demonstration, ~20 paints, real file would include ~620)
+const pigments = [
+  {code:'70.901', name:'Pastel Blue', line:'Model Color', family:'Blues', hex:'#7fa9e1'},
+  {code:'70.930', name:'Dark Blue', line:'Model Color', family:'Blues', hex:'#1f3a93'},
+  {code:'71001', name:'Air White', line:'Model Air', family:'Whites', hex:'#f7f7f7'},
+  {code:'71015', name:'Air Red', line:'Model Air', family:'Reds', hex:'#c92f2d'},
+  {code:'777', name:'Ork Skin', line:'Game Color', family:'Skin Tones', hex:'#8c7c55'},
+  {code:'700', name:'Chaos Black', line:'Game Color', family:'Whites/Greys', hex:'#111111'},
+  {code:'70901', name:'Flat White', line:'Model Color', family:'Whites', hex:'#ffffff'},
+  {code:'70926', name:'Flat Red', line:'Model Color', family:'Reds', hex:'#c32b2b'},
+  {code:'70946', name:'Dark Red', line:'Model Color', family:'Reds', hex:'#8b1c1c'},
+  {code:'71007', name:'Air Blue', line:'Model Air', family:'Blues', hex:'#3b6abf'},
+  {code:'71015', name:'Air Red', line:'Model Air', family:'Reds', hex:'#d13838'},
+  {code:'71070', name:'Air Yellow', line:'Model Air', family:'Yellows', hex:'#f5e342'},
+  {code:'70990', name:'Flat Yellow', line:'Model Color', family:'Yellows', hex:'#f9ea36'},
+  {code:'70822', name:'Flat Green', line:'Model Color', family:'Greens', hex:'#1b6e20'},
+  {code:'70902', name:'Light Blue', line:'Model Color', family:'Blues', hex:'#a0c4e7'},
+  {code:'70990', name:'Flat Yellow', line:'Model Color', family:'Yellows', hex:'#f9ea36'},
+  {code:'70941', name:'Dark Green', line:'Model Color', family:'Greens', hex:'#1a4e20'},
+  {code:'70925', name:'Orange', line:'Model Color', family:'Oranges', hex:'#ff7f2a'},
+  {code:'70927', name:'Flat Brown', line:'Model Color', family:'Browns', hex:'#7a5230'},
+  {code:'71071', name:'Air Orange', line:'Model Air', family:'Oranges', hex:'#ff9b45'}
+];
 
-let filteredKeys = Object.keys(pigments);
-let sliders = [];
+let showCodes = false;
 
-// FILTER
-function filterPaints(){
-  const search = searchBox.value.toLowerCase();
-  const family = filterFamily.value;
-  filteredKeys = Object.keys(pigments).filter(k=>{
-    const p=pigments[k];
-    return (family==='all'||p.family===family) && p.name.toLowerCase().includes(search);
+// Organize pigments by family
+const pigmentsByFamily = {};
+pigments.forEach(p => {
+  if(!pigmentsByFamily[p.family]) pigmentsByFamily[p.family] = [];
+  pigmentsByFamily[p.family].push(p);
+});
+
+// DOM elements
+const controlsDiv = document.getElementById('controls');
+const previewDiv = document.getElementById('preview');
+const toggleBtn = document.getElementById('toggleCodes');
+
+// Function to create pigment sliders
+function createSliders(){
+  controlsDiv.innerHTML = '';
+  Object.keys(pigmentsByFamily).forEach(family => {
+    const header = document.createElement('h3');
+    header.textContent = family;
+    controlsDiv.appendChild(header);
+
+    pigmentsByFamily[family].forEach(p => {
+      const container = document.createElement('div');
+      container.className = 'slider-container';
+
+      const swatch = document.createElement('span');
+      swatch.className = 'swatch';
+      swatch.style.backgroundColor = p.hex;
+      container.appendChild(swatch);
+
+      const label = document.createElement('label');
+      label.textContent = showCodes ? `${p.name} (${p.code})` : p.name;
+      container.appendChild(label);
+
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.min = 0;
+      slider.max = 100;
+      slider.value = 0;
+      slider.dataset.hex = p.hex;
+      slider.addEventListener('input', updateMix);
+      container.appendChild(slider);
+
+      const percent = document.createElement('span');
+      percent.textContent = '0%';
+      slider.addEventListener('input', ()=> percent.textContent = slider.value + '%');
+      container.appendChild(percent);
+
+      controlsDiv.appendChild(container);
+    });
   });
-  sliders.forEach(s=>updateDropdown(s.select));
 }
 
-// ADD SLIDER
-function addSlider(){
-  const container=document.createElement("div");
-  container.className="slider-container";
-
-  const select=document.createElement("select");
-  updateDropdown(select);
-  select.oninput=mixPaints;
-
-  const slider=document.createElement("input");
-  slider.type="range"; slider.min=0; slider.max=100; slider.value=50;
-  slider.oninput=()=>{ slider.nextSibling.textContent=slider.value+"%"; mixPaints(); };
-
-  const percent=document.createElement("span");
-  percent.className="percent-display"; percent.textContent=slider.value+"%";
-
-  container.appendChild(select);
-  container.appendChild(slider);
-  container.appendChild(percent);
-
-  document.getElementById("slidersContainer").appendChild(container);
-  sliders.push({select, slider, percent});
-
-  mixPaints();
+function updateMix(){
+  let r=0,g=0,b=0,total=0;
+  const sliders = controlsDiv.querySelectorAll('input[type=range]');
+  sliders.forEach(slider => {
+    const weight = parseInt(slider.value);
+    if(weight>0){
+      const hex = slider.dataset.hex;
+      const c = hexToRgb(hex);
+      r += c.r*weight;
+      g += c.g*weight;
+      b += c.b*weight;
+      total += weight;
+    }
+  });
+  if(total>0){ r=Math.round(r/total); g=Math.round(g/total); b=Math.round(b/total); }
+  previewDiv.style.backgroundColor = `rgb(${r},${g},${b})`;
 }
 
-// UPDATE DROPDOWN OPTIONS
-function updateDropdown(select){
-  const val = select.value;
-  select.innerHTML="";
-  filteredKeys.forEach(k=>{
-    const p=pigments[k];
-    const opt=document.createElement("option");
-    opt.value=k;
-    opt.textContent=p.name;
-    select.appendChild(opt);
-  });
-  select.value=val||filteredKeys[0];
+function hexToRgb(hex){
+  const bigint = parseInt(hex.replace('#',''),16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return {r,g,b};
 }
 
-// COLOR HELPERS
-function hexToRgb(hex){let n=parseInt(hex.slice(1),16); return {r:((n>>16)&255)/255,g:((n>>8)&255)/255,b:(n&255)/255};}
-function rgbToHex(r,g,b){r=Math.min(Math.max(r,0),1); g=Math.min(Math.max(g,0),1); b=Math.min(Math.max(b,0),1); return "#"+[r,g,b].map(x=>Math.round(x*255).toString(16).padStart(2,"0")).join("");}
-function toLinear(c){return c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4);}
-function toSRGB(c){return c<=0.0031308?12.92*c:1.055*Math.pow(c,1/2.4)-0.055;}
+toggleBtn.addEventListener('click', ()=>{
+  showCodes = !showCodes;
+  createSliders();
+});
 
-// MIX
-function mixPaints(){
-  let inputs = sliders.map(s=>({p:pigments[s.select.value], w:+s.slider.value}));
-  let total = inputs.reduce((a,b)=>a+b.w,0);
-  if(!total) return;
-  inputs.forEach(x=>x.w/=total);
+createSliders();
 
-  let r=0,g=0,b=0;
-  inputs.forEach(({p,w})=>{
-    const c=hexToRgb(p.hex);
-    r+=Math.pow(toLinear(c.r),1.1)*w*p.strength;
-    g+=Math.pow(toLinear(c.g),1.1)*w*p.strength;
-    b+=Math.pow(toLinear(c.b),1.1)*w*p.strength;
-  });
-  let wet={r:toSRGB(r),g:toSRGB(g),b:toSRGB(b)};
+// Image color picker
+const imageInput = document.getElementById('imageInput');
+const imageCanvas = document.getElementById('imageCanvas');
+const ctx = imageCanvas.getContext('2d');
 
-  // Dry
-  const darken=+dryDarken.value, sat=+drySaturation.value, contrast=+dryContrast.value;
-  const finish=finishType.value;
-  const avg=(wet.r+wet.g+wet.b)/3;
-  let dry={
-    r:avg+(Math.pow(wet.r*darken,contrast)-avg)*sat,
-    g:avg+(Math.pow(wet.g*darken,contrast)-avg)*sat,
-    b:avg+(Math.pow(wet.b*darken,contrast)-avg)*sat
+imageInput.addEventListener('change', e=>{
+  const file = e.target.files[0];
+  const img = new Image();
+  img.onload = ()=>{
+    imageCanvas.width = img.width;
+    imageCanvas.height = img.height;
+    ctx.drawImage(img,0,0);
+    previewDiv.addEventListener('click', pickColorFromImage);
   };
+  img.src = URL.createObjectURL(file);
+});
 
-  if(finish==="gloss"){dry.r=Math.min(dry.r*1.05+0.02,1); dry.g=Math.min(dry.g*1.05+0.02,1); dry.b=Math.min(dry.b*1.05+0.02,1);}
-  wetDiv.style.backgroundColor=rgbToHex(wet.r,wet.g,wet.b);
-  dryDiv.style.backgroundColor=rgbToHex(dry.r,dry.g,dry.b);
+function pickColorFromImage(e){
+  const rect = previewDiv.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const pixel = ctx.getImageData(x,y,1,1).data;
+  suggestMix(pixel[0],pixel[1],pixel[2]);
 }
 
-// SAVE / LOAD
-function saveMix(){
-  let mix={name:mixName.value||"mix", finish:finishType.value};
-  sliders.forEach((s,i)=>{ mix["p"+i]=s.select.value; mix["w"+i]=s.slider.value; });
-  let data=JSON.parse(localStorage.getItem("mixes")||"[]");
-  data.push(mix); localStorage.setItem("mixes",JSON.stringify(data));
-  renderSaved();
-}
-
-function loadMix(m){
-  sliders.forEach((s,i)=>{
-    s.select.value=m["p"+i]||s.select.value;
-    s.slider.value=m["w"+i]||s.slider.value;
-    s.percent.textContent=s.slider.value+"%";
+function suggestMix(r,g,b){
+  // Simple nearest color suggestion (can improve with more advanced algorithms)
+  let best = null, bestDist=Infinity;
+  pigments.forEach(p=>{
+    const c = hexToRgb(p.hex);
+    const dist = Math.sqrt(Math.pow(c.r-r,2)+Math.pow(c.g-g,2)+Math.pow(c.b-b,2));
+    if(dist<bestDist){ bestDist=dist; best=p; }
   });
-  finishType.value=m.finish||"matte";
-  mixPaints();
+  // Reset sliders
+  controlsDiv.querySelectorAll('input[type=range]').forEach(slider=> slider.value=0);
+  // Set suggested slider to 100%
+  const slider = Array.from(controlsDiv.querySelectorAll('input[type=range]')).find(s=> s.dataset.hex===best.hex);
+  if(slider) slider.value=100; updateMix();
 }
-
-function renderSaved(){
-  const data=JSON.parse(localStorage.getItem("mixes")||"[]");
-  savedList.innerHTML="";
-  data.forEach(m=>{
-    const d=document.createElement("div");
-    d.className="savedMix"; d.textContent=m.name;
-    d.onclick=()=>loadMix(m); savedList.appendChild(d);
-  });
-}
-
-// INIT
-addSlider(); addSlider(); addSlider(); // default 3
-filterPaints();
-renderSaved();
 </script>
-
 </body>
 </html>

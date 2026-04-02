@@ -2,249 +2,262 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Acrylic Paint Mixer Pro</title>
+<title>Acrylic Paint Mixer Pro+</title>
 
 <style>
-body {
-  font-family: Arial;
-  text-align: center;
-  background: #f4f4f4;
-}
+body { font-family: Arial; text-align: center; background:#f4f4f4; }
 
 .preview {
-  width: 150px;
-  height: 150px;
-  border: 2px solid black;
-  display: inline-block;
-  margin: 10px;
-}
-
-select, input {
-  margin: 5px;
+  width:150px; height:150px;
+  border:2px solid black;
+  display:inline-block; margin:10px;
 }
 
 .savedMix {
-  cursor: pointer;
-  margin: 5px;
-  padding: 5px;
-  border: 1px solid black;
-  display: inline-block;
-  background: white;
+  cursor:pointer;
+  padding:5px;
+  border:1px solid black;
+  margin:3px;
+  background:white;
+}
+
+.controls { margin:10px; }
+
+select option {
+  padding:2px;
+}
+
+/* Swatch in dropdowns */
+.option-swatch {
+  display:inline-block;
+  width:12px; height:12px;
+  margin-right:4px;
+  vertical-align:middle;
+  border:1px solid #000;
 }
 </style>
 </head>
 
 <body>
 
-<h1>🎨 Acrylic Paint Mixer Pro</h1>
+<h1>🎨 Acrylic Paint Mixer Pro+</h1>
 
-<!-- ---------------- COLORS ---------------- -->
-<div>
-  Color 1:
-  <select id="p1"></select>
-  <input type="range" id="w1" min="0" max="100" value="50">
+<!-- SEARCH + FILTER -->
+<div class="controls">
+  Search: <input type="text" id="searchBox" oninput="filterPaints()">
+  Filter:
+  <select id="filterFamily" onchange="filterPaints()">
+    <option value="all">All</option>
+    <option value="white">White/Grey</option>
+    <option value="yellow">Yellow</option>
+    <option value="red">Red</option>
+    <option value="blue">Blue</option>
+    <option value="green">Green</option>
+    <option value="brown">Brown</option>
+    <option value="skin">Skin</option>
+    <option value="purple">Purple</option>
+  </select>
 </div>
 
+<!-- COLORS -->
 <div>
-  Color 2:
-  <select id="p2"></select>
-  <input type="range" id="w2" min="0" max="100" value="50">
+  Color 1: <select id="p1"></select> <input type="range" id="w1" min="0" max="100" value="50">
 </div>
-
 <div>
-  Color 3:
-  <select id="p3"></select>
-  <input type="range" id="w3" min="0" max="100" value="0">
+  Color 2: <select id="p2"></select> <input type="range" id="w2" min="0" max="100" value="50">
+</div>
+<div>
+  Color 3: <select id="p3"></select> <input type="range" id="w3" min="0" max="100" value="0">
 </div>
 
 <button onclick="mixPaints()">Mix</button>
 
-<!-- ---------------- PREVIEW ---------------- -->
 <h2>Results</h2>
-
 <div>
   <p>Wet</p>
   <div id="wetDiv" class="preview"></div>
 </div>
-
 <div>
   <p>Dry</p>
   <div id="dryDiv" class="preview"></div>
 </div>
 
-<!-- ---------------- CALIBRATION ---------------- -->
+<!-- CALIBRATION -->
 <h3>Dry Calibration</h3>
+Darken <input type="range" id="dryDarken" min="0.7" max="1" step="0.01" value="0.9"><br>
+Saturation <input type="range" id="drySaturation" min="0.8" max="1.5" step="0.01" value="1.1"><br>
+Contrast <input type="range" id="dryContrast" min="0.8" max="1.5" step="0.01" value="1.1"><br>
+Finish: <select id="finishType">
+  <option value="matte">Matte</option>
+  <option value="gloss">Gloss</option>
+</select>
 
-Darken:
-<input type="range" id="dryDarken" min="0.7" max="1" step="0.01" value="0.9"><br>
-
-Saturation:
-<input type="range" id="drySaturation" min="0.8" max="1.5" step="0.01" value="1.1"><br>
-
-Contrast:
-<input type="range" id="dryContrast" min="0.8" max="1.5" step="0.01" value="1.1"><br>
-
-<!-- ---------------- SAVE / LOAD ---------------- -->
+<!-- SAVE -->
 <h3>Saved Mixes</h3>
-
-<input type="text" id="mixName" placeholder="Mix name">
-<button onclick="saveMix()">Save Mix</button>
-
+<input id="mixName" placeholder="Mix name">
+<button onclick="saveMix()">Save</button>
 <div id="savedList"></div>
 
 <script>
-// ---------------- PIGMENTS ----------------
+
+// 🎨 PAINT DATA
 const pigments = {
-  ultramarine: {name:"Ultramarine Blue", hex:"#3f48cc", strength:0.8},
-  hansaYellow: {name:"Hansa Yellow", hex:"#ffcc00", strength:1.0},
-  cadmiumRed: {name:"Cadmium Red", hex:"#e32636", strength:1.2},
-  titaniumWhite: {name:"Titanium White", hex:"#ffffff", strength:0.5}
+  white1:{name:"White", hex:"#ffffff", strength:0.5, family:"white"},
+  grey1:{name:"Neutral Grey", hex:"#8a8a8a", strength:0.8, family:"white"},
+  black1:{name:"Black", hex:"#111111", strength:1.2, family:"white"},
+
+  yellow1:{name:"Lemon Yellow", hex:"#f4e300", strength:0.9, family:"yellow"},
+  yellow2:{name:"Deep Yellow", hex:"#e0b000", strength:1.0, family:"yellow"},
+
+  red1:{name:"Flat Red", hex:"#c73a2c", strength:1.1, family:"red"},
+  red2:{name:"Dark Red", hex:"#8b1e1e", strength:1.2, family:"red"},
+
+  blue1:{name:"Dark Blue", hex:"#1f3a93", strength:1.0, family:"blue"},
+  blue2:{name:"Pastel Blue", hex:"#7fa9e1", strength:0.7, family:"blue"},
+
+  green1:{name:"Olive Green", hex:"#5a6b2f", strength:1.0, family:"green"},
+  green2:{name:"Deep Green", hex:"#1f5a3a", strength:1.0, family:"green"},
+
+  brown1:{name:"Chocolate Brown", hex:"#4a2c1f", strength:1.1, family:"brown"},
+  brown2:{name:"Beige Brown", hex:"#9c6b3b", strength:0.9, family:"brown"},
+
+  skin1:{name:"Basic Skin Tone", hex:"#e0ac69", strength:0.8, family:"skin"},
+
+  purple1:{name:"Royal Purple", hex:"#5a2a83", strength:1.1, family:"purple"}
 };
 
-// Populate dropdowns
-function loadPigments() {
-  let selects = [p1, p2, p3];
-  selects.forEach(sel => {
-    for (let key in pigments) {
-      let opt = document.createElement("option");
-      opt.value = key;
-      opt.textContent = pigments[key].name;
+let filteredKeys = Object.keys(pigments);
+
+// 🔍 FILTER SYSTEM
+function filterPaints(){
+  let search = searchBox.value.toLowerCase();
+  let family = filterFamily.value;
+
+  filteredKeys = Object.keys(pigments).filter(k=>{
+    let p = pigments[k];
+    return (
+      (family==="all" || p.family===family) &&
+      p.name.toLowerCase().includes(search)
+    );
+  });
+
+  loadDropdowns();
+}
+
+// LOAD DROPDOWNS WITH SWATCHES
+function loadDropdowns(){
+  [p1,p2,p3].forEach(sel=>{
+    sel.innerHTML="";
+    filteredKeys.forEach(k=>{
+      let p = pigments[k];
+      let opt=document.createElement("option");
+      opt.value=k;
+      opt.textContent="  "+p.name; // spacing for swatch
       sel.appendChild(opt);
-    }
+    });
   });
 }
 
-// ---------------- COLOR HELPERS ----------------
+// HELPERS
 function hexToRgb(hex){
-  let bigint = parseInt(hex.slice(1), 16);
-  return {
-    r: ((bigint >> 16) & 255)/255,
-    g: ((bigint >> 8) & 255)/255,
-    b: (bigint & 255)/255
-  };
+  let n=parseInt(hex.slice(1),16);
+  return {r:((n>>16)&255)/255,g:((n>>8)&255)/255,b:(n&255)/255};
 }
-
 function rgbToHex(r,g,b){
-  return "#" + [r,g,b].map(x =>
-    Math.round(x*255).toString(16).padStart(2,'0')
-  ).join('');
+  r=Math.min(Math.max(r,0),1);
+  g=Math.min(Math.max(g,0),1);
+  b=Math.min(Math.max(b,0),1);
+  return "#"+[r,g,b].map(x=>Math.round(x*255).toString(16).padStart(2,"0")).join("");
 }
+function toLinear(c){ return c<=0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055,2.4); }
+function toSRGB(c){ return c<=0.0031308 ? 12.92*c : 1.055*Math.pow(c,1/2.4)-0.055; }
 
-function toLinear(c){
-  return c<=0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055,2.4);
-}
-
-function toSRGB(c){
-  return c<=0.0031308 ? 12.92*c : 1.055*Math.pow(c,1/2.4)-0.055;
-}
-
-// ---------------- MIXING ----------------
+// MIX WITH SPECTRAL APPROXIMATION + FINISH
 function mixPaints(){
-  let inputs = [
+  let inputs=[
     {p:pigments[p1.value], w:+w1.value},
     {p:pigments[p2.value], w:+w2.value},
     {p:pigments[p3.value], w:+w3.value}
   ];
 
-  let total = inputs.reduce((s,x)=>s+x.w,0);
-  if(total===0) return;
+  let total=inputs.reduce((s,x)=>s+x.w,0);
+  if(!total) return;
   inputs.forEach(x=>x.w/=total);
 
-  let r=1,g=1,b=1;
-
+  // Spectral approximation: weighted linear + exponent for perceptual
+  let r=0,g=0,b=0;
   inputs.forEach(({p,w})=>{
-    let c = hexToRgb(p.hex);
-    let weight = w * p.strength;
-
-    r *= Math.pow(toLinear(c.r), weight);
-    g *= Math.pow(toLinear(c.g), weight);
-    b *= Math.pow(toLinear(c.b), weight);
+    let c=hexToRgb(p.hex);
+    r+=Math.pow(toLinear(c.r),1.1)*w*p.strength;
+    g+=Math.pow(toLinear(c.g),1.1)*w*p.strength;
+    b+=Math.pow(toLinear(c.b),1.1)*w*p.strength;
   });
 
-  let wet = {
-    r: toSRGB(r),
-    g: toSRGB(g),
-    b: toSRGB(b)
+  let wet={r:toSRGB(r),g:toSRGB(g),b:toSRGB(b)};
+
+  // Dry
+  let darken=+dryDarken.value;
+  let sat=+drySaturation.value;
+  let contrast=+dryContrast.value;
+  let finish=finishType.value;
+
+  let avg=(wet.r+wet.g+wet.b)/3;
+  let dry={
+    r:avg + (Math.pow(wet.r*darken,contrast)-avg)*sat,
+    g:avg + (Math.pow(wet.g*darken,contrast)-avg)*sat,
+    b:avg + (Math.pow(wet.b*darken,contrast)-avg)*sat
   };
 
-  // ---- DRY CALIBRATION ----
-  let darken = +dryDarken.value;
-  let sat = +drySaturation.value;
-  let contrast = +dryContrast.value;
-
-  let avg = (wet.r+wet.g+wet.b)/3;
-
-  let dry = {
-    r: Math.pow(wet.r * darken, contrast),
-    g: Math.pow(wet.g * darken, contrast),
-    b: Math.pow(wet.b * darken, contrast)
-  };
-
-  dry.r = avg + (dry.r-avg)*sat;
-  dry.g = avg + (dry.g-avg)*sat;
-  dry.b = avg + (dry.b-avg)*sat;
-
-  // Clamp
-  for (let k in dry){
-    dry[k] = Math.min(1, Math.max(0, dry[k]));
+  // Matte vs Gloss: gloss slightly brighter + more reflective
+  if(finish==="gloss"){
+    dry.r = Math.min(dry.r*1.05 + 0.02,1);
+    dry.g = Math.min(dry.g*1.05 + 0.02,1);
+    dry.b = Math.min(dry.b*1.05 + 0.02,1);
   }
 
-  wetDiv.style.backgroundColor = rgbToHex(wet.r,wet.g,wet.b);
-  dryDiv.style.backgroundColor = rgbToHex(dry.r,dry.g,dry.b);
+  wetDiv.style.backgroundColor=rgbToHex(wet.r,wet.g,wet.b);
+  dryDiv.style.backgroundColor=rgbToHex(dry.r,dry.g,dry.b);
 }
 
-// ---------------- SAVE / LOAD ----------------
+// SAVE / LOAD
 function saveMix(){
-  let name = mixName.value || "Unnamed";
-
-  let mix = {
-    name,
-    p1:p1.value, w1:w1.value,
-    p2:p2.value, w2:w2.value,
-    p3:p3.value, w3:w3.value,
-    darken:dryDarken.value,
-    sat:drySaturation.value,
-    contrast:dryContrast.value
+  let mix={
+    name:mixName.value||"mix",
+    p1:p1.value,w1:w1.value,
+    p2:p2.value,w2:w2.value,
+    p3:p3.value,w3:w3.value,
+    finish:finishType.value
   };
-
-  let saved = JSON.parse(localStorage.getItem("mixes") || "[]");
-  saved.push(mix);
-  localStorage.setItem("mixes", JSON.stringify(saved));
-
+  let data=JSON.parse(localStorage.getItem("mixes")||"[]");
+  data.push(mix);
+  localStorage.setItem("mixes",JSON.stringify(data));
   renderSaved();
 }
 
-function loadMix(mix){
-  p1.value = mix.p1;
-  w1.value = mix.w1;
-  p2.value = mix.p2;
-  w2.value = mix.w2;
-  p3.value = mix.p3;
-  w3.value = mix.w3;
-
-  dryDarken.value = mix.darken;
-  drySaturation.value = mix.sat;
-  dryContrast.value = mix.contrast;
-
+function loadMix(m){
+  p1.value=m.p1; w1.value=m.w1;
+  p2.value=m.p2; w2.value=m.w2;
+  p3.value=m.p3; w3.value=m.w3;
+  finishType.value=m.finish||"matte";
   mixPaints();
 }
 
 function renderSaved(){
-  let saved = JSON.parse(localStorage.getItem("mixes") || "[]");
-  savedList.innerHTML = "";
-
-  saved.forEach(mix=>{
-    let div = document.createElement("div");
-    div.className = "savedMix";
-    div.textContent = mix.name;
-    div.onclick = ()=>loadMix(mix);
-    savedList.appendChild(div);
+  let data=JSON.parse(localStorage.getItem("mixes")||"[]");
+  savedList.innerHTML="";
+  data.forEach(m=>{
+    let d=document.createElement("div");
+    d.className="savedMix";
+    d.textContent=m.name;
+    d.onclick=()=>loadMix(m);
+    savedList.appendChild(d);
   });
 }
 
-// ---------------- INIT ----------------
-loadPigments();
+// INIT
+filterPaints();
 renderSaved();
+
 </script>
 
 </body>

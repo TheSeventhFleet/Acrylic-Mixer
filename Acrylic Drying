@@ -9,7 +9,7 @@ body { font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px; }
 .container { display: flex; flex-wrap: wrap; gap: 20px; }
 .controls { flex: 1 1 300px; max-height: 600px; overflow-y: auto; border-right:1px solid #ccc; padding-right:10px; }
 .previews { flex: 1 1 300px; display: flex; gap: 10px; margin-bottom:10px; }
-.preview { flex:1; height: 200px; border:1px solid #ccc; border-radius:8px; }
+.preview { flex:1; height: 200px; border:1px solid #ccc; border-radius:8px; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#fff; font-size:16px; }
 .slider-container { display: flex; align-items: center; margin-bottom: 5px; gap:5px; flex-wrap: wrap; }
 .slider-container input[type=range] { flex:1; }
 .swatch { display: inline-block; width: 14px; height: 14px; border:1px solid #000; }
@@ -23,8 +23,8 @@ body { font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px; }
   <div class="controls" id="controls"></div>
   <div>
     <div class="previews">
-      <div class="preview" id="previewWet" title="Wet"></div>
-      <div class="preview" id="previewDry" title="Dry"></div>
+      <div class="preview" id="previewWet" title="Wet">Wet</div>
+      <div class="preview" id="previewDry" title="Dry">Dry</div>
     </div>
     <img id="imagePreview" alt="Upload image to pick color">
     <input type="file" id="imageInput" accept="image/*">
@@ -47,9 +47,10 @@ const pigments = [
   {code:'70927', name:'Flat Brown', line:'Model Color', family:'Browns', hex:'#7a5230'}
 ];
 
+// Organize pigments by family
 const pigmentsByFamily = {};
 pigments.forEach(p => {
-  if(!pigmentsByFamily[p.family]) pigmentsByFamily[p.family]=[];
+  if(!pigmentsByFamily[p.family]) pigmentsByFamily[p.family] = [];
   pigmentsByFamily[p.family].push(p);
 });
 
@@ -89,11 +90,6 @@ function createSliders() {
       const percent = document.createElement('span');
       percent.textContent='0%';
 
-      const previewSwatch = document.createElement('span');
-      previewSwatch.className='swatch';
-      previewSwatch.style.border='1px solid #555';
-      container.appendChild(previewSwatch);
-
       slider.addEventListener('input', ()=>{
         percent.textContent=slider.value+'%';
         updateMix();
@@ -112,7 +108,7 @@ function hexToRgb(hex){
   return {r:(bigint>>16)&255, g:(bigint>>8)&255, b:bigint&255};
 }
 
-// Update mix for wet and dry
+// Update main wet/dry panels
 function updateMix(){
   let r=0,g=0,b=0,total=0;
   controlsDiv.querySelectorAll('.slider-container').forEach(container=>{
@@ -120,17 +116,17 @@ function updateMix(){
     const weight=parseInt(slider.value);
     const rgb=hexToRgb(slider.dataset.hex);
     if(weight>0){ r+=rgb.r*weight; g+=rgb.g*weight; b+=rgb.b*weight; total+=weight; }
-
-    const previewSwatch = container.querySelectorAll('.swatch')[1];
-    previewSwatch.style.backgroundColor=`rgb(${rgb.r},${rgb.g},${rgb.b})`;
   });
-
   let rWet=r,gWet=g,bWet=b;
   if(total>0){ rWet=Math.round(r/total); gWet=Math.round(g/total); bWet=Math.round(b/total); }
   let rDry=Math.round(rWet*0.85), gDry=Math.round(gWet*0.85), bDry=Math.round(bWet*0.85);
 
   previewWet.style.backgroundColor=`rgb(${rWet},${gWet},${bWet})`;
   previewDry.style.backgroundColor=`rgb(${rDry},${gDry},${bDry})`;
+
+  // Optional: adjust text color for visibility
+  previewWet.style.color = (rWet+gWet+bWet < 200) ? '#fff' : '#000';
+  previewDry.style.color = (rDry+gDry+bDry < 200) ? '#fff' : '#000';
 }
 
 // Image upload
@@ -139,6 +135,7 @@ imageInput.addEventListener('change', e=>{
   if(!file) return;
   const img=new Image();
   img.onload=()=>{
+    // Draw canvas at exact displayed image size
     imageCanvas.width=imagePreview.width;
     imageCanvas.height=imagePreview.height;
     ctx.drawImage(img,0,0,imageCanvas.width,imageCanvas.height);

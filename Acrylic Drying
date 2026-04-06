@@ -6,13 +6,18 @@
 <title>Vallejo Mixer</title>
 <style>
 body { font-family: Arial; background:#f4f4f4; padding:20px; }
-.container { display:flex; gap:20px; }
-.controls { width:320px; }
+.container { display:flex; gap:20px; align-items:flex-start; }
+.controls { width:360px; }
 .color-row { display:flex; gap:5px; margin-bottom:5px; align-items:center; }
 .preview { width:120px; height:120px; border:1px solid #000; margin-top:5px; }
 #imagePreview { max-width:500px; cursor:crosshair; display:block; margin-bottom:5px; }
 .picked-color { width:50px; height:50px; border:1px solid #000; margin-top:5px; }
 .preview-label { text-align:center; font-weight:bold; margin-top:5px; }
+.percent-label { width:38px; text-align:right; font-size:12px; }
+.subtle { font-size:12px; color:#555; margin-top:8px; }
+#suggestions { margin-top:10px; line-height:1.45; }
+.controls-row { display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
+.small-control { font-size:12px; }
 </style>
 </head>
 <body>
@@ -20,8 +25,20 @@ body { font-family: Arial; background:#f4f4f4; padding:20px; }
 <h2>Vallejo Mixer</h2>
 <div class="container">
   <div class="controls">
-    <button id="addColorBtn">+ Add Color</button>
-    <button id="targetToggle">Match Wet</button>
+    <div class="controls-row">
+      <button id="addColorBtn">+ Add Color</button>
+      <button id="targetToggle">Match Wet</button>
+    </div>
+    <div class="controls-row small-control">
+      <label>Max paints:
+        <select id="maxPaintsSelect">
+          <option value="3">3</option>
+          <option value="4" selected>4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+        </select>
+      </label>
+    </div>
     <div id="rows"></div>
     <div>
       <div class="preview-label">Wet</div>
@@ -29,6 +46,7 @@ body { font-family: Arial; background:#f4f4f4; padding:20px; }
       <div class="preview-label">Dry</div>
       <div id="previewDry" class="preview"></div>
     </div>
+    <div class="subtle">Now using per-pigment dry shifts, anti-mud penalties, and a Kubelka–Munk style mix model.</div>
   </div>
   <div>
     <img id="imagePreview">
@@ -41,30 +59,40 @@ body { font-family: Arial; background:#f4f4f4; padding:20px; }
 <canvas id="canvas" style="display:none;"></canvas>
 
 <script>
+
+// ---------- CONSTANTS ----------
+const DEFAULT_DRY_FACTOR = 0.88;
+
 // ---------- PIGMENTS ----------
+// wetHex is the in-bottle / fresh mix color. dryHex predicts how that specific paint dries.
 const pigments = [
-{name:'Air White',hex:'#f7f7f7'},
-{name:'Chaos Black',hex:'#111111'},
-{name:'Basic Skin Tone',hex:'#f2c6a0'},
-{name:'Flat Flesh',hex:'#f2b283'},
-{name:'Elf Skin',hex:'#f5d4b2'},
-{name:'Medium Flesh',hex:'#d9a074'},
-{name:'Dark Flesh',hex:'#8a5a3b'},
-{name:'Salmon Rose',hex:'#f7a6a1'},
-{name:'Rosy Flesh',hex:'#e8a39c'},
-{name:'Pale Pink',hex:'#f6c1c0'},
-{name:'Flat Yellow',hex:'#f9ea36'},
-{name:'Ice Yellow',hex:'#fff1a8'},
-{name:'Orange',hex:'#ff7f2a'},
-{name:'Flat Red',hex:'#a12424'},
-{name:'Hull Red',hex:'#5a1a1a'},
-{name:'Dark Blue',hex:'#1f3a93'},
-{name:'Flat Blue',hex:'#3f70b0'},
-{name:'Pastel Blue',hex:'#7fa9e1'},
-{name:'Neutral Grey',hex:'#7f7f7f'},
-{name:'Flat Brown',hex:'#7a5230'},
-{name:'Flat Green',hex:'#1b6e20'}
-];
+{name:'Air White',wetHex:'#f7f7f7',dryHex:'#efefef',strength:0.6,opacity:0.95,family:'neutral'},
+{name:'Chaos Black',wetHex:'#111111',dryHex:'#101010',strength:1.8,opacity:0.98,family:'neutral'},
+{name:'Basic Skin Tone',wetHex:'#f4ccb0',dryHex:'#f2c6a0',strength:1.0,opacity:0.88,family:'skin'},
+{name:'Flat Flesh',wetHex:'#f4bb8f',dryHex:'#f2b283',strength:1.0,opacity:0.86,family:'skin'},
+{name:'Elf Skin',wetHex:'#f8dcc1',dryHex:'#f5d4b2',strength:0.9,opacity:0.82,family:'skin'},
+{name:'Medium Flesh',wetHex:'#dfab81',dryHex:'#d9a074',strength:1.1,opacity:0.88,family:'skin'},
+{name:'Dark Flesh',wetHex:'#946449',dryHex:'#8a5a3b',strength:1.3,opacity:0.92,family:'brown'},
+{name:'Salmon Rose',wetHex:'#fbafa8',dryHex:'#f7a6a1',strength:0.9,opacity:0.8,family:'skin'},
+{name:'Rosy Flesh',wetHex:'#eeaca5',dryHex:'#e8a39c',strength:0.9,opacity:0.84,family:'skin'},
+{name:'Pale Pink',wetHex:'#fbcdcb',dryHex:'#f6c1c0',strength:0.8,opacity:0.76,family:'skin'},
+{name:'Flat Yellow',wetHex:'#fdef4a',dryHex:'#f9ea36',strength:1.4,opacity:0.82,family:'yellow'},
+{name:'Ice Yellow',wetHex:'#fff6bf',dryHex:'#fff1a8',strength:0.7,opacity:0.72,family:'yellow'},
+{name:'Orange',wetHex:'#ff8937',dryHex:'#ff7f2a',strength:1.3,opacity:0.84,family:'orange'},
+{name:'Flat Red',wetHex:'#af2d2b',dryHex:'#a12424',strength:1.6,opacity:0.9,family:'red'},
+{name:'Hull Red',wetHex:'#682724',dryHex:'#5a1a1a',strength:1.7,opacity:0.95,family:'brown'},
+{name:'Dark Blue',wetHex:'#2846a3',dryHex:'#1f3a93',strength:1.6,opacity:0.92,family:'blue'},
+{name:'Flat Blue',wetHex:'#4b7cbb',dryHex:'#3f70b0',strength:1.3,opacity:0.84,family:'blue'},
+{name:'Pastel Blue',wetHex:'#8db5e8',dryHex:'#7fa9e1',strength:0.8,opacity:0.72,family:'blue'},
+{name:'Neutral Grey',wetHex:'#8b8b8b',dryHex:'#7f7f7f',strength:1.0,opacity:0.9,family:'neutral'},
+{name:'Flat Brown',wetHex:'#876140',dryHex:'#7a5230',strength:1.2,opacity:0.92,family:'brown'},
+{name:'Flat Green',wetHex:'#25792c',dryHex:'#1b6e20',strength:1.5,opacity:0.9,family:'green'}
+].map(p => ({
+  ...p,
+  hex: p.dryHex,
+  kmWet: hexToKmData(p.wetHex, p.opacity),
+  kmDry: hexToKmData(p.dryHex, Math.max(0.08, p.opacity * 1.03))
+}));
 
 // ---------- DOM ----------
 const rowsDiv = document.getElementById('rows');
@@ -76,6 +104,7 @@ const pickedColorDiv = document.getElementById('pickedColor');
 const suggestionsDiv = document.getElementById('suggestions');
 const addColorBtn = document.getElementById('addColorBtn');
 const targetToggle = document.getElementById('targetToggle');
+const maxPaintsSelect = document.getElementById('maxPaintsSelect');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
@@ -83,105 +112,481 @@ let colorRows = [];
 let matchWet = true;
 
 // ---------- HELPERS ----------
-function hexToRgb(hex){let n=parseInt(hex.slice(1),16);return {r:(n>>16)&255,g:(n>>8)&255,b:n&255};}
-function rgbToLab(r,g,b){r/=255;g/=255;b/=255;r=r>0.04045?((r+0.055)/1.055)**2.4:r/12.92;g=g>0.04045?((g+0.055)/1.055)**2.4:g/12.92;b=b>0.04045?((b+0.055)/1.055)**2.4:b/12.92;let x=r*0.4124+g*0.3576+b*0.1805;let y=r*0.2126+g*0.7152+b*0.0722;let z=r*0.0193+g*0.1192+b*0.9505;x/=0.95047;z/=1.08883;x=x>0.008856?x**(1/3):(7.787*x)+16/116;y=y>0.008856?y**(1/3):(7.787*y)+16/116;z=z>0.008856?z**(1/3):(7.787*z)+16/116;return {L:(116*y)-16,a:500*(x-y),b:200*(y-z)};}
-function deltaE(a,b){return Math.sqrt((a.L-b.L)**2+(a.a-b.a)**2+(a.b-b.b)**2);}
+function hexToRgb(hex){
+  let n = parseInt(hex.slice(1),16);
+  return {r:(n>>16)&255,g:(n>>8)&255,b:n&255};
+}
+
+function clamp(v,min,max){
+  return Math.max(min, Math.min(max, v));
+}
+
+function rgbToHex(r,g,b){
+  return "#" + [r,g,b].map(v => clamp(Math.round(v),0,255).toString(16).padStart(2,'0')).join('').toUpperCase();
+}
+
+function srgbToLinearChannel(c){
+  c = clamp(c, 0, 255) / 255;
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+
+function linearToSrgbChannel(v){
+  v = clamp(v, 0, 1);
+  const srgb = v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+  return clamp(Math.round(srgb * 255), 0, 255);
+}
+
+function reflectanceToKS(r){
+  r = Math.max(0.001, Math.min(0.999, r));
+  return ((1 - r) * (1 - r)) / (2 * r);
+}
+
+function ksToReflectance(ks){
+  ks = Math.max(0, ks);
+  return 1 + ks - Math.sqrt(ks * ks + 2 * ks);
+}
+
+function hexToKmData(hex, opacity=0.85){
+  const rgb = hexToRgb(hex);
+  const refl = [rgb.r, rgb.g, rgb.b].map(srgbToLinearChannel);
+  const scatter = Math.max(0.08, Math.min(1.25, opacity));
+  const ks = refl.map(reflectanceToKS);
+  return {
+    K: ks.map(v => v * scatter),
+    S: [scatter, scatter, scatter]
+  };
+}
+
+function rgbToLab(r,g,b){
+  r/=255; g/=255; b/=255;
+  r = r>0.04045 ? ((r+0.055)/1.055)**2.4 : r/12.92;
+  g = g>0.04045 ? ((g+0.055)/1.055)**2.4 : g/12.92;
+  b = b>0.04045 ? ((b+0.055)/1.055)**2.4 : b/12.92;
+  let x=r*0.4124+g*0.3576+b*0.1805;
+  let y=r*0.2126+g*0.7152+b*0.0722;
+  let z=r*0.0193+g*0.1192+b*0.9505;
+  x/=0.95047; z/=1.08883;
+  x = x>0.008856 ? x**(1/3) : (7.787*x)+16/116;
+  y = y>0.008856 ? y**(1/3) : (7.787*y)+16/116;
+  z = z>0.008856 ? z**(1/3) : (7.787*z)+16/116;
+  return {L:(116*y)-16,a:500*(x-y),b:200*(y-z)};
+}
+
+function deltaE(a,b){
+  return Math.sqrt((a.L-b.L)**2 + (a.a-b.a)**2 + (a.b-b.b)**2);
+}
+
+function mixRgb(entries, key){
+  let K = [0,0,0];
+  let S = [0,0,0];
+  let total = 0;
+
+  entries.forEach(({pigment, amount}) => {
+    if(!pigment || amount <= 0) return;
+
+    const km = key === 'wetHex' ? pigment.kmWet : pigment.kmDry;
+    const effective = amount * (pigment.strength || 1);
+
+    for(let i=0; i<3; i++){
+      K[i] += km.K[i] * effective;
+      S[i] += km.S[i] * effective;
+    }
+    total += effective;
+  });
+
+  if(total <= 0) return hexToRgb('#f7f7f7');
+
+  const mixed = [0,1,2].map(i => {
+    const avgK = K[i] / total;
+    const avgS = Math.max(0.0001, S[i] / total);
+    const reflectance = ksToReflectance(avgK / avgS);
+    return linearToSrgbChannel(reflectance);
+  });
+
+  return { r:mixed[0], g:mixed[1], b:mixed[2] };
+}
+
+function dryToWetRgb(r,g,b){
+  return {
+    r: clamp(Math.round(r / DEFAULT_DRY_FACTOR), 0, 255),
+    g: clamp(Math.round(g / DEFAULT_DRY_FACTOR), 0, 255),
+    b: clamp(Math.round(b / DEFAULT_DRY_FACTOR), 0, 255)
+  };
+}
+
+function normalizeMix(mix){
+  let cleaned = mix.map(v => Math.max(0, v));
+  let sum = cleaned.reduce((a,b)=>a+b,0);
+  if(sum === 0){
+    cleaned[0] = 100;
+    sum = 100;
+  }
+  return cleaned.map(v => (v / sum) * 100);
+}
+
+function getMaxPaints(){
+  return parseInt(maxPaintsSelect.value, 10) || 4;
+}
+
+function getCurrentEntries(){
+  return colorRows.map(c => ({
+    pigment: pigments.find(p => p.dryHex === c.select.value),
+    amount: parseFloat(c.slider.value) || 0
+  }));
+}
+
+function getMixedWetRgb(){
+  return mixRgb(getCurrentEntries(), 'wetHex');
+}
+
+function getMixedDryRgb(){
+  return mixRgb(getCurrentEntries(), 'dryHex');
+}
+
+function mudPenalty(mix){
+  const active = mix.filter(v => v >= 3);
+  let penalty = 0;
+
+  // Penalty for too many paints
+  const over = Math.max(0, active.length - getMaxPaints());
+  penalty += over * 6;
+
+  // Penalty for trace amounts that muddy without helping
+  penalty += mix.filter(v => v > 0.5 && v < 6).length * 1.2;
+
+  const activeFamilies = new Set();
+  mix.forEach((v,i) => {
+    if(v >= 4) activeFamilies.add(colorRows[i].select.options[colorRows[i].select.selectedIndex].text);
+  });
+
+  // Penalty for overly broad hue fights using pigment families
+  const familySet = new Set();
+  mix.forEach((v,i) => {
+    if(v >= 5){
+      const pigment = pigments.find(p => p.dryHex === colorRows[i].select.value);
+      if(pigment) familySet.add(pigment.family);
+    }
+  });
+  if(familySet.size >= 4) penalty += (familySet.size - 3) * 2.5;
+
+  return penalty;
+}
+
+function getTargetLab(r,g,b){
+  return rgbToLab(r,g,b);
+}
 
 // ---------- ADD ROW ----------
-function addColorRow(hex='#f7f7f7',val=0){
-  const row=document.createElement('div'); row.className='color-row';
-  const select=document.createElement('select');
-  pigments.forEach(p=>{let o=document.createElement('option');o.value=p.hex;o.text=p.name;select.appendChild(o);});
-  select.value=hex;
-  const slider=document.createElement('input'); slider.type='range'; slider.min=0; slider.max=100; slider.value=val;
-  slider.oninput=updateMix; select.onchange=updateMix;
-  row.appendChild(select); row.appendChild(slider);
+function addColorRow(hex='#f7f7f7', val=0){
+  const row = document.createElement('div');
+  row.className = 'color-row';
+
+  const select = document.createElement('select');
+  pigments.forEach(p => {
+    let o = document.createElement('option');
+    o.value = p.dryHex;
+    o.text = p.name;
+    select.appendChild(o);
+  });
+  select.value = hex;
+
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.min = 0;
+  slider.max = 100;
+  slider.value = val;
+
+  const percentLabel = document.createElement('span');
+  percentLabel.className = 'percent-label';
+  percentLabel.textContent = val + '%';
+
+  slider.oninput = () => {
+    updateMix();
+    updatePercentLabels();
+  };
+  select.onchange = () => {
+    updateMix();
+    updatePercentLabels();
+  };
+
+  row.appendChild(select);
+  row.appendChild(slider);
+  row.appendChild(percentLabel);
   rowsDiv.appendChild(row);
-  colorRows.push({row,select,slider});
+
+  colorRows.push({row, select, slider, percentLabel});
 }
 
 // ---------- MIX ----------
 function updateMix(){
-  let r=0,g=0,b=0,total=0;
-  colorRows.forEach(c=>{let w=parseInt(c.slider.value);if(w>0){let rgb=hexToRgb(c.select.value);r+=rgb.r*w;g+=rgb.g*w;b+=rgb.b*w;total+=w;}});
-  if(total>0){r/=total;g/=total;b/=total;}
-  if(matchWet){
-    previewWet.style.backgroundColor=`rgb(${r},${g},${b})`;
-    previewDry.style.backgroundColor=`rgb(${Math.round(r*0.91)},${Math.round(g*0.91)},${Math.round(b*0.91)})`;
-  }else{
-    previewDry.style.backgroundColor=`rgb(${r},${g},${b})`;
-    previewWet.style.backgroundColor=`rgb(${Math.round(r/0.91)},${Math.round(g/0.91)},${Math.round(b/0.91)})`;
+  if(colorRows.length === 1 && parseInt(colorRows[0].slider.value) === 100 && colorRows[0].select.value === '#efefef'){
+    // Keep the initial Air White state visually neutral instead of starting darker.
+    previewWet.style.backgroundColor = '#f7f7f7';
+    previewDry.style.backgroundColor = '#f7f7f7';
+    updatePercentLabels();
+    return;
   }
+
+  const wet = getMixedWetRgb();
+  const dry = getMixedDryRgb();
+
+  previewWet.style.backgroundColor = `rgb(${wet.r},${wet.g},${wet.b})`;
+  previewDry.style.backgroundColor = `rgb(${dry.r},${dry.g},${dry.b})`;
+
+  updatePercentLabels();
 }
 
-// ---------- IMAGE PICKER ----------
-imageInput.onchange=e=>{
-  let file=e.target.files[0]; let img=new Image();
-  img.onload=()=>{
-    imagePreview.src=img.src;
-    setTimeout(()=>{
-      canvas.width=imagePreview.clientWidth; canvas.height=imagePreview.clientHeight;
-      ctx.drawImage(img,0,0,canvas.width,canvas.height);
-    },50);
+function updatePercentLabels(){
+  let total = colorRows.reduce((sum,c)=>sum+(parseFloat(c.slider.value) || 0),0);
+  colorRows.forEach(c => {
+    let perc = total ? Math.round((parseFloat(c.slider.value) || 0) / total * 100) : 0;
+    c.percentLabel.textContent = perc + '%';
+  });
+}
+
+// ---------- IMAGE LOAD ----------
+imageInput.onchange = e => {
+  let file = e.target.files[0];
+  if(!file) return;
+
+  let img = new Image();
+  let url = URL.createObjectURL(file);
+
+  img.onload = () => {
+    imagePreview.src = url;
+    requestAnimationFrame(() => {
+      canvas.width = imagePreview.clientWidth;
+      canvas.height = imagePreview.clientHeight;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    });
   };
-  img.src=URL.createObjectURL(file);
-};
-imagePreview.onclick=e=>{
-  let rect=imagePreview.getBoundingClientRect();
-  let x=Math.floor(e.clientX-rect.left), y=Math.floor(e.clientY-rect.top);
-  let d=ctx.getImageData(x,y,1,1).data;
-  pickedColorDiv.style.backgroundColor=`rgb(${d[0]},${d[1]},${d[2]})`;
-  let targetR=d[0],targetG=d[1],targetB=d[2];
-  if(!matchWet){targetR=Math.round(d[0]/0.91);targetG=Math.round(d[1]/0.91);targetB=Math.round(d[2]/0.91);}
-  smartMixToMatch(targetR,targetG,targetB);
+
+  img.src = url;
 };
 
-// ---------- WET/DRY TOGGLE ----------
-targetToggle.onclick=()=>{
-  matchWet=!matchWet; targetToggle.textContent=matchWet?'Match Wet':'Match Dry';
-  const bg=pickedColorDiv.style.backgroundColor;
-  if(bg){
-    const rgb=bg.match(/\d+/g).map(Number);
-    let r=rgb[0],g=rgb[1],b=rgb[2];
-    if(!matchWet){r=Math.round(r/0.91);g=Math.round(g/0.91);b=Math.round(b/0.91);}
-    smartMixToMatch(r,g,b);
+// ---------- PICK COLOR ----------
+imagePreview.onclick = e => {
+  if(!canvas.width || !canvas.height) return;
+
+  let rect = imagePreview.getBoundingClientRect();
+  let x = Math.floor((e.clientX-rect.left)*(canvas.width/rect.width));
+  let y = Math.floor((e.clientY-rect.top)*(canvas.height/rect.height));
+  let d = ctx.getImageData(x,y,1,1).data;
+
+  pickedColorDiv.style.backgroundColor = `rgb(${d[0]},${d[1]},${d[2]})`;
+
+  if(matchWet){
+    smartMixToMatch(d[0], d[1], d[2], 'wet');
+  } else {
+    smartMixToMatch(d[0], d[1], d[2], 'dry');
   }
 };
 
-// ---------- SMART MIX WITH SKIN PINK BOOST ----------
-function smartMixToMatch(r,g,b){
-  rowsDiv.innerHTML=''; colorRows=[];
-  for(let i=0;i<4;i++) addColorRow();
-  const labTarget=rgbToLab(r,g,b);
-  const brightness=(r+g+b)/3;
-  function strength(hex){if(hex=='#111111')return 0.3;if(hex=='#f7f7f7')return 0.6;if(['#f7a6a1','#e8a39c','#f6c1c0'].includes(hex))return 1.4;if(['#a12424','#5a1a1a'].includes(hex))return 1.2;if(['#f9ea36','#fff1a8'].includes(hex))return 1.3;return 1;}
-  let hasRedBias=(r>g&&r>b)||(r>140&&g>100&&b<120)||(r>180&&g<160);
-  let base;if(brightness>220)base='#f7f7f7';else if(brightness<40)base='#111111';else{base=pigments.map(p=>{let lab=rgbToLab(...Object.values(hexToRgb(p.hex)));return {hex:p.hex,dist:deltaE(lab,labTarget)}}).sort((a,b)=>a.dist-b.dist)[0].hex;}
-  colorRows[0].select.value=base;
-  let others=pigments.filter(p=>p.hex!==base).map(p=>{let lab=rgbToLab(...Object.values(hexToRgb(p.hex)));return {hex:p.hex,dist:deltaE(lab,labTarget)}}).sort((a,b)=>a.dist-b.dist);
-  for(let i=1;i<4;i++) colorRows[i].select.value=others[i-1].hex;
-  let skinTone=(r>180 && g>120 && g<180 && b>100 && b<160)||(r>200&&g>140&&b>120);
-  if(skinTone){let pinks=['#f7a6a1','#e8a39c','#f6c1c0']; for(let i=1;i<4;i++){if(pinks.includes(colorRows[i].select.value))colorRows[i].slider.value=Math.max(parseInt(colorRows[i].slider.value),15);}}
-  let mix=[75,10,10,5];
-  function apply(){mix.forEach((v,i)=>colorRows[i].slider.value=v);updateMix();}
-  function error(){let rgb=getComputedStyle(matchWet?previewWet:previewDry).backgroundColor.match(/\d+/g).map(Number);if(!matchWet){rgb=rgb.map(c=>Math.round(c*0.91));}return deltaE(rgbToLab(...rgb),labTarget);}
-  apply(); let best=[...mix]; let bestErr=error();
-  for(let i=0;i<400;i++){
-    let m=[...mix]; let idx;if(hasRedBias && Math.random()<0.4)idx=1;else idx=Math.floor(Math.random()*3)+1;
-    m[idx]+=(Math.random()*6-3)*strength(colorRows[idx].select.value);
-    let sum=m.slice(1).reduce((a,b)=>a+b,0); m[0]=100-sum; if(m[0]<55)continue;
-    mix=m; apply();
-    let e=error(); if(e<bestErr){bestErr=e;best=[...mix];}else mix=[...best];
+// ---------- TOGGLE ----------
+targetToggle.onclick = () => {
+  matchWet = !matchWet;
+  targetToggle.textContent = matchWet ? 'Match Wet' : 'Match Dry';
+
+  const bg = pickedColorDiv.style.backgroundColor;
+  if(bg && bg.includes('rgb')){
+    const rgb = bg.match(/\d+/g).map(Number);
+    smartMixToMatch(rgb[0], rgb[1], rgb[2], matchWet ? 'wet' : 'dry');
+  } else {
+    updateMix();
   }
-  mix=best; apply();
-  suggestionsDiv.innerHTML='<b>Mix:</b><br>'+mix.map((v,i)=>`${colorRows[i].select.options[colorRows[i].select.selectedIndex].text} ~ ${Math.round(v)}%`).join('<br>');
+};
+
+// ---------- SMART MIX ----------
+function smartMixToMatch(targetR, targetG, targetB, targetMode='wet'){
+  rowsDiv.innerHTML = '';
+  colorRows = [];
+
+  const targetLab = getTargetLab(targetR, targetG, targetB);
+  const brightness = (targetR + targetG + targetB) / 3;
+  const isDark = brightness < 95;
+  const isVeryDark = brightness < 65;
+  const isSkin = targetR > 180 && targetG > 120 && targetG < 185 && targetB > 100;
+  const isGreenish = targetG > targetR && targetG > targetB;
+  const isBrownish = targetR > targetG && targetG > targetB && brightness < 170;
+  const isNeutralish = Math.abs(targetR-targetG) < 18 && Math.abs(targetG-targetB) < 18;
+
+  let ranked = pigments.map(p => {
+    const rgb = hexToRgb(targetMode === 'wet' ? p.wetHex : p.dryHex);
+    const lab = rgbToLab(rgb.r, rgb.g, rgb.b);
+    let dist = deltaE(lab, targetLab);
+    let boost = 1;
+
+    if(isGreenish && p.family === 'green') boost *= 1.8;
+    if(isSkin && p.family === 'skin') boost *= 1.8;
+    if(isBrownish && ['brown','red','yellow','orange'].includes(p.family)) boost *= 1.55;
+    if(isNeutralish && p.family === 'neutral') boost *= 1.3;
+    if(isDark && ['brown','neutral','blue','red'].includes(p.family)) boost *= 1.25;
+    if(isVeryDark && ['#efefef','#fff1a8','#7fa9e1','#f6c1c0'].includes(p.dryHex)) boost *= 0.55;
+
+    return { pigment:p, score: dist / boost };
+  }).sort((a,b)=>a.score-b.score);
+
+  let chosen = ranked.slice(0, Math.max(getMaxPaints() + 1, 5)).map(x => x.pigment);
+
+  // Force in anchors for troublesome targets
+  const mustHave = [];
+  if(isBrownish) mustHave.push('#7a5230', '#5a1a1a', '#f9ea36');
+  if(isDark) mustHave.push('#111111');
+  if(isGreenish) mustHave.push('#1b6e20');
+
+  mustHave.forEach(hex => {
+    if(!chosen.some(p => p.dryHex === hex)){
+      const extra = pigments.find(p => p.dryHex === hex);
+      if(extra) chosen.push(extra);
+    }
+  });
+
+  chosen = chosen.slice(0, Math.min(getMaxPaints() + 2, 7));
+
+  const firstValue = chosen.length > 1 ? 72 : 100;
+  const restValue = chosen.length > 1 ? Math.max(1, Math.floor(28 / (chosen.length - 1))) : 0;
+
+  chosen.forEach((p,i) => addColorRow(p.dryHex, i===0 ? firstValue : restValue));
+
+  function applyMix(mix){
+    const normalized = normalizeMix(mix);
+    normalized.forEach((v,i) => {
+      if(colorRows[i]) colorRows[i].slider.value = Math.round(v);
+    });
+    updateMix();
+  }
+
+  function currentError(mix){
+    applyMix(mix);
+
+    const rgb = targetMode === 'wet' ? getMixedWetRgb() : getMixedDryRgb();
+    const resultLab = rgbToLab(rgb.r, rgb.g, rgb.b);
+    const colorError = deltaE(resultLab, targetLab);
+    const penalty = mudPenalty(normalizeMix(mix));
+    return colorError + penalty;
+  }
+
+  let mix = colorRows.map(c => parseFloat(c.slider.value));
+  let best = [...mix];
+  let bestErr = currentError(best);
+
+  // Broader exploration first
+  for(let iter=0; iter<1200; iter++){
+    let candidate = [...best];
+    const changes = iter < 350 ? 2 : 1;
+
+    for(let k=0; k<changes; k++){
+      const idx = Math.floor(Math.random()*candidate.length);
+      const step = iter < 400 ? 14 : iter < 800 ? 8 : 4;
+      candidate[idx] += (Math.random() * step * 2 - step);
+    }
+
+    candidate = normalizeMix(candidate);
+    let e = currentError(candidate);
+    if(e < bestErr){
+      bestErr = e;
+      best = [...candidate];
+    }
+  }
+
+  // Local refinement pass
+  let improved = true;
+  while(improved){
+    improved = false;
+    for(let i=0; i<best.length; i++){
+      for(let j=0; j<best.length; j++){
+        if(i === j) continue;
+        for(let step of [6,3,2,1]){
+          if(best[j] < step) continue;
+          let candidate = [...best];
+          candidate[i] += step;
+          candidate[j] -= step;
+          candidate = normalizeMix(candidate);
+          let e = currentError(candidate);
+          if(e < bestErr){
+            bestErr = e;
+            best = [...candidate];
+            improved = true;
+          }
+        }
+      }
+    }
+  }
+
+  // Prune low-value pigments, then re-optimize
+  let pruned = normalizeMix(best).map(v => v < 4 ? 0 : v);
+  if(pruned.filter(v => v >= 4).length >= 2){
+    best = normalizeMix(pruned);
+    bestErr = currentError(best);
+
+    for(let iter=0; iter<300; iter++){
+      let candidate = [...best];
+      const idx = Math.floor(Math.random()*candidate.length);
+      candidate[idx] += (Math.random()*4*2 - 4);
+      candidate = normalizeMix(candidate);
+      let e = currentError(candidate);
+      if(e < bestErr){
+        bestErr = e;
+        best = [...candidate];
+      }
+    }
+  }
+
+  applyMix(best);
+
+  // Remove rows that ended up negligible
+  for(let i=colorRows.length-1; i>=0; i--){
+    if((parseFloat(colorRows[i].slider.value) || 0) < 3){
+      rowsDiv.removeChild(colorRows[i].row);
+      colorRows.splice(i,1);
+    }
+  }
+
+  if(colorRows.length === 0){
+    addColorRow('#efefef', 100);
+  } else {
+    const remaining = colorRows.map(c => parseFloat(c.slider.value) || 0);
+    applyMix(remaining);
+  }
+
+  const wet = getMixedWetRgb();
+  const dry = getMixedDryRgb();
+  const shownTarget = rgbToHex(targetR, targetG, targetB);
+  const shownWet = rgbToHex(wet.r, wet.g, wet.b);
+  const shownDry = rgbToHex(dry.r, dry.g, dry.b);
+  const resultLab = rgbToLab(targetMode === 'wet' ? wet.r : dry.r, targetMode === 'wet' ? wet.g : dry.g, targetMode === 'wet' ? wet.b : dry.b);
+  const closeness = deltaE(resultLab, targetLab);
+
+  let rating = 'Rough';
+  if(closeness < 5) rating = 'Excellent';
+  else if(closeness < 9) rating = 'Good';
+  else if(closeness < 14) rating = 'Decent';
+
+  suggestionsDiv.innerHTML =
+    '<b>Mix:</b><br>' +
+    colorRows.map(c => `${c.select.options[c.select.selectedIndex].text} ~ ${Math.round(c.slider.value)}%`).join('<br>') +
+    `<br><br><b>Target (${targetMode}):</b> ${shownTarget}` +
+    `<br><b>Wet result:</b> ${shownWet}` +
+    `<br><b>Dry result:</b> ${shownDry}` +
+    `<br><b>Closeness:</b> ${rating} (ΔE ${closeness.toFixed(1)})`;
 }
 
 // ---------- INIT ----------
-addColorBtn.onclick=()=>addColorRow();
-addColorRow();
+addColorBtn.onclick = () => addColorRow();
+maxPaintsSelect.onchange = () => {
+  const bg = pickedColorDiv.style.backgroundColor;
+  if(bg && bg.includes('rgb')){
+    const rgb = bg.match(/\d+/g).map(Number);
+    smartMixToMatch(rgb[0], rgb[1], rgb[2], matchWet ? 'wet' : 'dry');
+  } else {
+    updateMix();
+  }
+};
+addColorRow('#efefef', 100);
+matchWet = true;
+targetToggle.textContent = 'Match Wet';
 updateMix();
-</script>
 
+</script>
 </body>
 </html>
